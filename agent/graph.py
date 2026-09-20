@@ -16,12 +16,13 @@ from langgraph.graph import StateGraph, END
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from config import GEMINI_API_KEY
+from config import GEMINI_API_KEY, LLM_ENHANCED_ASSESSMENT, SIMULATION_MODE
 from agent.tools import GraphTools
 from rag.vector_store import FraudVectorStore
 from memory.case_memory import CaseMemory
 from agent.simulator import CustomerSimulator
 from agent.policy import evaluate_policy_rules, CustomerReplyOutcome, get_action_route
+from agent.schemas import HypothesisOutput, EvidenceSynthesisOutput, SARNarrativeOutput
 from agent.prompts import (
     INVESTIGATION_SYSTEM_PROMPT,
     INITIAL_ASSESSMENT_PROMPT,
@@ -159,6 +160,63 @@ class FraudInvestigationGraph:
                 return res.content.strip()
             except Exception:
                 pass
+        return None
+
+    def _call_gemini_structured(self, prompt: str, schema_cls: Any) -> Optional[Any]:
+        """Calls Gemini with structured schema output enforcement and Pydantic validation."""
+        if self.client:
+            for model_id in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"]:
+                try:
+                    from google.genai import types
+                    config = types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=schema_cls,
+                    )
+                    response = self.client.models.generate_content(
+                        model=model_id,
+                        contents=prompt,
+                        config=config
+                    )
+                    if response and response.text:
+                        parsed = schema_cls.from_llm_text(response.text)
+                        if parsed:
+                            return parsed
+                except Exception:
+                    try:
+                        response = self.client.models.generate_content(
+                            model=model_id,
+                            contents=prompt + f"\n\nReturn ONLY a valid JSON object matching the schema for {schema_cls.__name__}."
+                        )
+                        if response and response.text:
+                            parsed = schema_cls.from_llm_text(response.text)
+                            if parsed:
+                                return parsed
+                    except Exception:
+                        continue
+
+        if self.llm:
+            try:
+                if hasattr(self.llm, "with_structured_output"):
+                    try:
+                        structured_llm = self.llm.with_structured_output(schema_cls)
+                        res = structured_llm.invoke(prompt)
+                        if isinstance(res, schema_cls):
+                            return res
+                        elif isinstance(res, dict):
+                            return schema_cls(**res)
+                    except Exception:
+                        pass
+                res = self.llm.invoke(prompt + f"\n\nReturn ONLY a valid JSON object matching {schema_cls.__name__}.")
+                if res and res.content:
+                    return schema_cls.from_llm_text(res.content)
+            except Exception:
+                pass
+
+        # Fallback to plain prompt and text parsing
+        raw_text = self._call_gemini(prompt)
+        if raw_text:
+            return schema_cls.from_llm_text(raw_text)
+
         return None
 
     # -------------------------------------------------------------
@@ -376,6 +434,30 @@ class FraudInvestigationGraph:
             initial_pattern = "out_of_region_use" if is_region_anomaly else "card_not_present_fraud"
             initial_prob = 0.45
             initial_verdict = "uncertain"
+
+        # Opt-in LLM Hypothesis Enrichment
+        if LLM_ENHANCED_ASSESSMENT and not SIMULATION_MODE and (self.client or self.llm):
+            try:
+                llm_hyp_prompt = INITIAL_ASSESSMENT_PROMPT.format(
+                    case_id=state.get("case_id", ""),
+                    trigger_type=trigger_type,
+                    trigger_text=state.get("trigger_text", ""),
+                    txn_data=json.dumps(txn_data, default=str),
+                    baseline=json.dumps(baseline, default=str),
+                    episode=json.dumps(episode_meta, default=str),
+                    connected_cards=json.dumps(connected_cards, default=str),
+                    has_shared_device_ring=has_shared_device_ring,
+                    memory_hits=json.dumps(state.get("memory_hits", {}), default=str)
+                )
+                hyp_output = self._call_gemini_structured(llm_hyp_prompt, HypothesisOutput)
+                if hyp_output:
+                    tokens_consumed += 350
+                    trace.append({
+                        "step": "LLM Hypothesis Enrichment",
+                        "thought": f"LLM assessed preliminary verdict: {hyp_output.preliminary_verdict} ({hyp_output.preliminary_probability:.2f}) with pattern '{hyp_output.preliminary_pattern}'. Reasoning: {hyp_output.reasoning}"
+                    })
+            except Exception:
+                pass
 
         # Evaluate Initial Policy Actions
         initial_exposure = episode_exposure if initial_verdict != "legitimate" else 0.0
@@ -731,21 +813,30 @@ class FraudInvestigationGraph:
                 email_domain=p_email,
                 pattern=final_pattern
             )
-            llm_sar = self._call_gemini(llm_prompt)
-            if llm_sar and len(llm_sar.split(".")) >= 5:
-                sar_narrative = llm_sar
+            sar_structured = self._call_gemini_structured(llm_prompt, SARNarrativeOutput)
+            if sar_structured and sar_structured.narrative and len(sar_structured.narrative.split(".")) >= 5:
+                sar_narrative = sar_structured.narrative
+                if sar_structured.subjects:
+                    sar_subjects = list(set(sar_structured.subjects))
+                if sar_structured.total_amount_usd > 0:
+                    sar_amount = round(sar_structured.total_amount_usd, 2)
                 tokens_consumed += 450
             else:
-                sar_narrative = (
-                    f"On {date_str}, fraud monitoring detected unauthorized transaction activity on card {card_id} "
-                    f"belonging to customer {customer_id}. The total unauthorized exposure is ${sar_amount:.2f} USD across {len(affected_txn_ids)} "
-                    f"transaction(s) ({', '.join(affected_txn_ids)}) conforming to the '{final_pattern}' fraud typology. "
-                    f"The activity was executed through eCommerce channels utilizing device profile '{dev_info}' and email domain '{p_email}'. "
-                    f"Cardholder outreach was conducted pursuant to Bank Fraud Policy, and the cardholder confirmed that the transactions were unauthorized. "
-                    f"Graph neighborhood analysis identified infrastructure connections linking this incident to {len(connected_cards)} additional card(s) sharing identical device infrastructure. "
-                    f"The bank took immediate protective action by placing a block on card {card_id} and placing all connected cards under heightened monitoring. "
-                    f"This report is filed pursuant to regulatory requirements due to confirmed unauthorized compromise and shared device infrastructure."
-                )
+                llm_sar = self._call_gemini(llm_prompt)
+                if llm_sar and len(llm_sar.split(".")) >= 5:
+                    sar_narrative = llm_sar
+                    tokens_consumed += 450
+                else:
+                    sar_narrative = (
+                        f"On {date_str}, fraud monitoring detected unauthorized transaction activity on card {card_id} "
+                        f"belonging to customer {customer_id}. The total unauthorized exposure is ${sar_amount:.2f} USD across {len(affected_txn_ids)} "
+                        f"transaction(s) ({', '.join(affected_txn_ids)}) conforming to the '{final_pattern}' fraud typology. "
+                        f"The activity was executed through eCommerce channels utilizing device profile '{dev_info}' and email domain '{p_email}'. "
+                        f"Cardholder outreach was conducted pursuant to Bank Fraud Policy, and the cardholder confirmed that the transactions were unauthorized. "
+                        f"Graph neighborhood analysis identified infrastructure connections linking this incident to {len(connected_cards)} additional card(s) sharing identical device infrastructure. "
+                        f"The bank took immediate protective action by placing a block on card {card_id} and placing all connected cards under heightened monitoring. "
+                        f"This report is filed pursuant to regulatory requirements due to confirmed unauthorized compromise and shared device infrastructure."
+                    )
 
             trace.append({
                 "step": "SAR Generation",
@@ -928,8 +1019,13 @@ class FraudInvestigationGraph:
 
         return workflow.compile()
 
-    def run(self, case_row: Dict[str, Any], submitted_evidence: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Runs the compiled LangGraph workflow for a single case."""
+    def run(
+        self,
+        case_row: Dict[str, Any],
+        submitted_evidence: Optional[Dict[str, Any]] = None,
+        resume_state: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Runs the compiled LangGraph workflow for a single case, supporting optional checkpoint resumption."""
         start_time = time.time()
         
         raw_risk_score = case_row.get("risk_score")
@@ -948,6 +1044,12 @@ class FraudInvestigationGraph:
             "tokens_consumed": 0,
             "explainability_trace": []
         }
+
+        if resume_state and isinstance(resume_state, dict):
+            # Restore state attributes from checkpoint
+            for k, v in resume_state.items():
+                if k not in ["submitted_evidence"]:
+                    initial_state[k] = v
 
         if submitted_evidence:
             initial_state["submitted_evidence"] = submitted_evidence

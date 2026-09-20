@@ -90,9 +90,12 @@ def test_api_auth_protection_on_investigate():
 
 def test_api_auth_success_with_valid_key():
     with TestClient(app) as client:
-        # With valid API key -> routes to handler
+        # With valid API key -> routes to handler and executes successfully
         response = client.post(
             "/api/cases/HHG-001/investigate",
             headers={"X-API-Key": TEST_API_KEY}
         )
-        assert response.status_code in [200, 500]
+        assert response.status_code == 200
+        data = response.json()
+        assert data.get("case_id") == "HHG-001"
+        assert "case" in data

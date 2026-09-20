@@ -42,3 +42,29 @@ def test_tigergraph_fallback_on_query_exception():
     assert repo.fallback_count >= 1
     assert "GSQL server unavailable" in repo.last_fallback_reason
     assert baseline is not None
+
+def test_tigergraph_fail_closed_policy_on_disconnection():
+    from agent.repository.exceptions import TigerGraphUnavailableError
+
+    repo = TigerGraphFraudRepository(fallback_policy="fail_closed")
+    repo.conn = None
+
+    with pytest.raises(TigerGraphUnavailableError) as exc_info:
+        repo.get_transaction_detail("2987000")
+    
+    assert "fail_closed" in str(exc_info.value)
+    assert repo.fallback_count >= 1
+
+def test_tigergraph_fail_closed_policy_on_query_error():
+    from agent.repository.exceptions import TigerGraphUnavailableError
+
+    mock_conn = MagicMock()
+    mock_conn.runInstalledQuery.side_effect = RuntimeError("Connection timeout to graph engine")
+
+    repo = TigerGraphFraudRepository(fallback_policy="fail_closed")
+    repo.conn = mock_conn
+
+    with pytest.raises(TigerGraphUnavailableError) as exc_info:
+        repo.get_card_baseline("CUST1001-K1", before_ts=1500000000.0)
+
+    assert "fail_closed" in str(exc_info.value)

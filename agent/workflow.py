@@ -32,7 +32,12 @@ class FraudInvestigationWorkflow:
             memory=self.memory
         )
 
-    def run_investigation(self, case_row: Dict[str, Any], submitted_evidence: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def run_investigation(
+        self,
+        case_row: Dict[str, Any],
+        submitted_evidence: Optional[Dict[str, Any]] = None,
+        resume_state: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Executes complete end-to-end investigation via LangGraph StateGraph:
         - Multi-hop Graph Traversal (TigerGraph)
@@ -42,4 +47,4 @@ class FraudInvestigationWorkflow:
         - FinCEN SAR 5 Ws and H Narrative Synthesis
         - Live TigerGraph Graph Persistence & Cross-Case Working Memory Update
         """
-        return self.agent_graph.run(case_row, submitted_evidence=submitted_evidence)
+        return self.agent_graph.run(case_row, submitted_evidence=submitted_evidence, resume_state=resume_state)

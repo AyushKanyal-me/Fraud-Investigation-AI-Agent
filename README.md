@@ -208,13 +208,64 @@ MEMORY_FILE=memory/case_memory.json
 python -m venv .venv
 source .venv/bin/activate
 
-# 2. Install dependencies
+# 2. Install core dependencies
 pip install -r requirements.txt
+
+# 3. Optional: Install PostgreSQL checkpoint storage extra
+pip install -e .[postgres]
+# Or directly: pip install psycopg2-binary
+```
+
+### Docker Deployment
+You can deploy the complete agent as a containerized service:
+
+```bash
+# Build and run using Docker Compose
+docker-compose up --build -d
+
+# Check service logs and health
+docker-compose logs -f
+curl http://localhost:8000/healthz
 ```
 
 ---
 
-## 7. Execution Guide
+## 7. Configuration & Environment Variables
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `GEMINI_API_KEY` | *(empty)* | Google Gemini API Key for LLM reasoning and SAR narratives |
+| `TIGERGRAPH_HOST` | `http://localhost` | TigerGraph RESTPP endpoint |
+| `TIGERGRAPH_FALLBACK_POLICY` | `fallback` | `fallback` for automatic local pandas fallback; `fail_closed` to raise `TigerGraphUnavailableError` |
+| `LLM_ENHANCED_ASSESSMENT` | `false` | `true` to enable dynamic LLM hypothesis synthesis; `false` for deterministic rule engine |
+| `DATA_REPOSITORY_BACKEND` | `tigergraph` | `tigergraph` or `local` |
+| `CHECKPOINT_BACKEND` | `sqlite` | `sqlite`, `postgres`, or `file` |
+| `SIMULATION_MODE` | `false` | `true` for offline mock execution; `false` for live LLM calls |
+| `API_AUTH_KEY` | *(required)* | Bearer/Header token for API access (`X-API-Key`) |
+
+---
+
+## 8. Architecture Decision Records (ADRs)
+
+### ADR-1: Deterministic Policy Shortcuts with Opt-In LLM Enrichment
+- **Context:** Banking compliance mandates 100% reproducible, predictable policy routing across known typologies (R1–R10). Unconstrained LLMs can exhibit stochastic drift on core threshold decisions.
+- **Decision:** Use deterministic, validated policy rule evaluators as the core decision backbone. Provide `LLM_ENHANCED_ASSESSMENT=true` as an opt-in enrichment layer that synthesizes natural language hypotheses and reasoning without compromising invariant guarantees.
+
+### ADR-2: TigerGraph Fail-Closed vs Fallback Policy
+- **Context:** Development and CI environments often lack a live TigerGraph cluster and rely on local parquet/CSV datasets. Production banking systems, however, must ensure that graph-native queries are executed against the enterprise graph without silent fallback.
+- **Decision:** Configure `TIGERGRAPH_FALLBACK_POLICY`. Default to `fallback` in development/CI and `fail_closed` in production, raising `TigerGraphUnavailableError` upon connection failure.
+
+### ADR-3: Lazy Loading for High-Volume In-Memory Repository
+- **Context:** The transaction dataset contains ~600k rows. Eagerly reading CSVs upon class instantiation introduces unnecessary startup latency and memory overhead for lightweight requests (e.g. `/healthz`).
+- **Decision:** Implement lazy loading (`_ensure_loaded()`) that defers CSV index construction until the first repository query is invoked.
+
+### ADR-4: Checkpoint-Driven Asynchronous Evidence Submission
+- **Context:** In human-in-the-loop workflows, cases requiring step-up authentication or customer confirmation must pause and persist in-flight state.
+- **Decision:** Persist full state snapshots in `CheckpointStore` (`sqlite`, `postgres`, or `file`). Resuming via `/cases/{case_id}/evidence/submit` validates and loads the exact checkpoint state before executing final disposition.
+
+---
+
+## 9. Execution Guide
 
 ### Running Batch Case Investigations
 To execute the complete LangGraph investigation workflow across all test cases:

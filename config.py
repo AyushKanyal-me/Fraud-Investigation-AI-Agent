@@ -21,6 +21,8 @@ CORS_ALLOWED_ORIGINS = [
 # Mode Flags
 SIMULATION_MODE = os.getenv("SIMULATION_MODE", "true").lower() in ("true", "1", "yes")
 DATA_REPOSITORY_BACKEND = os.getenv("DATA_REPOSITORY_BACKEND", "tigergraph")
+TIGERGRAPH_FALLBACK_POLICY = os.getenv("TIGERGRAPH_FALLBACK_POLICY", "fallback").strip().lower()
+LLM_ENHANCED_ASSESSMENT = os.getenv("LLM_ENHANCED_ASSESSMENT", "false").lower() in ("true", "1", "yes")
 
 
 # TigerGraph Settings

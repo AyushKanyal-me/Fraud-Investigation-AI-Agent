@@ -61,3 +61,12 @@ def test_get_similar_closed_cases(local_repo):
 def test_repository_factory():
     repo = get_fraud_repository("local")
     assert isinstance(repo, LocalFraudRepository)
+
+def test_repository_lazy_loading():
+    # Instantiate without calling any query
+    repo = LocalFraudRepository()
+    # Prior to querying, _ensure_loaded has not been invoked if class cache wasn't already primed
+    # When query is called, it loads seamlessly
+    rec = repo.get_transaction_detail("3514030")
+    assert rec is not None
+    assert repo.df_txn is not None

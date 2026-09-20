@@ -170,7 +170,7 @@ def get_health(
         "vector_store_docs": vs.collection.count() if vs.collection else len(vs.documents),
         "memory_cases_count": len(mem.cases),
         "tigergraph_connected": tls.conn is not None,
-        "dataset_transactions_loaded": len(tls.df_txn) if hasattr(tls, "df_txn") else 0
+        "dataset_transactions_loaded": len(tls.df_txn) if getattr(tls, "df_txn", None) is not None else 0
     }
 
 @app.get("/api/repository/health", tags=["System"])
@@ -424,8 +424,15 @@ def submit_external_evidence(
 
     case_row = matches.iloc[0].to_dict()
     
-    # Resume workflow with submitted evidence
-    result = wf.run_investigation(case_row, submitted_evidence=req.model_dump())
+    # Retrieve checkpoint state if available
+    checkpoint_record = checkpoints.get_checkpoint(case_id, request_id=req.request_id)
+    if not checkpoint_record:
+        checkpoint_record = checkpoints.get_checkpoint(case_id)
+    
+    resume_state = checkpoint_record.get("state") if checkpoint_record else None
+
+    # Resume workflow with submitted evidence and checkpoint state
+    result = wf.run_investigation(case_row, submitted_evidence=req.model_dump(), resume_state=resume_state)
 
     # Validate output
     is_valid, errors, _ = validate_case_invariants(result, case_id_expected=case_id)

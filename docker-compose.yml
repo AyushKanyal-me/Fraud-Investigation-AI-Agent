@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  fraud-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fraud-investigation-agent
+    ports:
+      - "8000:8000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - TIGERGRAPH_HOST=${TIGERGRAPH_HOST:-http://tigergraph}
+      - TIGERGRAPH_RESTPP_PORT=${TIGERGRAPH_RESTPP_PORT:-9000}
+      - TIGERGRAPH_GS_PORT=${TIGERGRAPH_GS_PORT:-14240}
+      - TIGERGRAPH_USERNAME=${TIGERGRAPH_USERNAME:-tigergraph}
+      - TIGERGRAPH_PASSWORD=${TIGERGRAPH_PASSWORD:-tigergraph}
+      - TIGERGRAPH_GRAPH_NAME=${TIGERGRAPH_GRAPH_NAME:-FraudGraph}
+      - TIGERGRAPH_FALLBACK_POLICY=${TIGERGRAPH_FALLBACK_POLICY:-fallback}
+      - DATA_REPOSITORY_BACKEND=${DATA_REPOSITORY_BACKEND:-local}
+      - CHECKPOINT_BACKEND=${CHECKPOINT_BACKEND:-sqlite}
+      - SIMULATION_MODE=${SIMULATION_MODE:-false}
+      - API_AUTH_KEY=${API_AUTH_KEY:-tigergraph-fraud-agent-auth-key}
+    volumes:
+      - ./logs:/app/logs
+      - ./memory:/app/memory
+      - ./checkpoints:/app/checkpoints
+      - ./answers:/app/answers
+      - ./Dataset:/app/Dataset:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

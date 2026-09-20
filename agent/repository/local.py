@@ -31,6 +31,14 @@ class LocalFraudRepository(FraudDataRepository):
     def __init__(self, dataset_dir: Optional[Path] = None):
         self.dataset_dir = Path(dataset_dir) if dataset_dir else DATASET_DIR
         self.card_mapper = get_canonical_card_mapper()
+        self.df_txn = None
+        self.df_txn_by_id = None
+        self.df_id = None
+        self.df_closed = None
+
+    def _ensure_loaded(self):
+        if self.df_txn is not None and self.df_txn_by_id is not None:
+            return
         self._load_indices()
 
     def _load_indices(self):
@@ -127,6 +135,7 @@ class LocalFraudRepository(FraudDataRepository):
         self.df_closed = df_closed
 
     def get_transaction_detail(self, transaction_id: str) -> Optional[TransactionRecord]:
+        self._ensure_loaded()
         tid_str = str(transaction_id)
         if tid_str not in self.df_txn_by_id.index:
             return None
@@ -166,6 +175,7 @@ class LocalFraudRepository(FraudDataRepository):
         )
 
     def get_card_baseline(self, card_id: str, before_ts: float, lookback_sec: float = 30 * 86400) -> CardBaseline:
+        self._ensure_loaded()
         matches = self.df_txn[
             (self.df_txn["card_id"] == card_id) &
             (self.df_txn["ts_val"] < before_ts) &
@@ -203,6 +213,7 @@ class LocalFraudRepository(FraudDataRepository):
         )
 
     def expand_fraud_episode(self, card_id: str, center_ts: float, flagged_txn_id: str, window_sec: float = 86400) -> EpisodeWindow:
+        self._ensure_loaded()
         window_df = self.df_txn[
             (self.df_txn["card_id"] == card_id) &
             (self.df_txn["ts_val"] >= center_ts - window_sec) &
@@ -257,6 +268,7 @@ class LocalFraudRepository(FraudDataRepository):
         )
 
     def get_device_neighbors(self, device_info: str, center_ts: float, window_sec: float = 7 * 86400, exclude_card_id: Optional[str] = None) -> List[DeviceNeighbor]:
+        self._ensure_loaded()
         if not device_info or device_info.lower() in ["unknown", "windows", "ios device", "none", "nan", "other"]:
             return []
 
@@ -289,6 +301,7 @@ class LocalFraudRepository(FraudDataRepository):
         return neighbors
 
     def get_similar_closed_cases(self, pattern: Optional[str] = None, customer_id: Optional[str] = None, top_k: int = 3) -> List[ClosedCaseRecord]:
+        self._ensure_loaded()
         if self.df_closed is None or self.df_closed.empty:
             return []
 

@@ -23,21 +23,29 @@ class GraphTools:
         self.vector_store = vector_store or FraudVectorStore()
         self.card_mapper = get_canonical_card_mapper()
         self.repo = repository or get_fraud_repository()
-        
-        # Backward-compatibility accessors
-        if hasattr(self.repo, "conn"):
-            self.conn = self.repo.conn
-        else:
-            self.conn = None
-            
-        if hasattr(self.repo, "df_txn"):
-            self.df_txn = self.repo.df_txn
-            self.df_id = getattr(self.repo, "df_id", None)
-            self.df_closed = getattr(self.repo, "df_closed", None)
-        else:
-            self.df_txn = pd.DataFrame()
-            self.df_id = None
-            self.df_closed = None
+
+    @property
+    def conn(self):
+        return getattr(self.repo, "conn", None)
+
+    @property
+    def df_txn(self):
+        if hasattr(self.repo, "_ensure_loaded"):
+            self.repo._ensure_loaded()
+        df = getattr(self.repo, "df_txn", None)
+        return df if df is not None else pd.DataFrame()
+
+    @property
+    def df_id(self):
+        if hasattr(self.repo, "_ensure_loaded"):
+            self.repo._ensure_loaded()
+        return getattr(self.repo, "df_id", None)
+
+    @property
+    def df_closed(self):
+        if hasattr(self.repo, "_ensure_loaded"):
+            self.repo._ensure_loaded()
+        return getattr(self.repo, "df_closed", None)
 
     def get_transaction_detail(self, txn_id: str) -> Dict[str, Any]:
         """Fetches complete transaction record including identity metadata."""

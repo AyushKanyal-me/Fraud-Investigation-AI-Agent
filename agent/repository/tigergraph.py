@@ -9,7 +9,7 @@ sys.path.insert(0, str(BASE_DIR))
 
 from config import (
     TG_HOST, TG_RESTPP_PORT, TG_GS_PORT, TG_USERNAME, TG_PASSWORD, TG_GRAPH_NAME,
-    TG_SECRET, TG_API_TOKEN
+    TG_SECRET, TG_API_TOKEN, TIGERGRAPH_FALLBACK_POLICY
 )
 from agent.repository.base import (
     FraudDataRepository,
@@ -20,6 +20,7 @@ from agent.repository.base import (
     ClosedCaseRecord
 )
 from agent.repository.local import LocalFraudRepository
+from agent.repository.exceptions import TigerGraphUnavailableError
 
 import logging
 from datetime import datetime, timezone
@@ -32,9 +33,10 @@ class TigerGraphFraudRepository(FraudDataRepository):
     Maintains semantic parity with LocalFraudRepository while executing graph-native traversals.
     Provides observable fallback tracking and structured health diagnostics.
     """
-    def __init__(self, fallback_local: Optional[LocalFraudRepository] = None):
+    def __init__(self, fallback_local: Optional[LocalFraudRepository] = None, fallback_policy: Optional[str] = None):
         self.conn = None
         self.fallback_local = fallback_local or LocalFraudRepository()
+        self.fallback_policy = (fallback_policy or TIGERGRAPH_FALLBACK_POLICY or "fallback").strip().lower()
         self.fallback_count: int = 0
         self.last_fallback_reason: Optional[str] = None
         self.last_fallback_timestamp: Optional[str] = None
@@ -65,6 +67,11 @@ class TigerGraphFraudRepository(FraudDataRepository):
         self.fallback_count += 1
         self.last_fallback_reason = reason
         self.last_fallback_timestamp = datetime.now(timezone.utc).isoformat()
+        if self.fallback_policy == "fail_closed" and method_name != "init":
+            msg = f"TigerGraph query failed in '{method_name}': {reason}. Policy is fail_closed."
+            logger.error("TG_FAIL_CLOSED: %s", msg)
+            raise TigerGraphUnavailableError(msg)
+
         logger.warning(
             "TG_FALLBACK: Method '%s' encountered error: %s. Falling back to local repository.",
             method_name,
@@ -79,6 +86,7 @@ class TigerGraphFraudRepository(FraudDataRepository):
         return {
             "backend": "tigergraph",
             "is_connected": self.is_connected(),
+            "fallback_policy": self.fallback_policy,
             "graph_name": TG_GRAPH_NAME,
             "host": TG_HOST,
             "query_count": self.query_count,
