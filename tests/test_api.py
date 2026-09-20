@@ -53,7 +53,10 @@ def test_read_only_evidence_get():
     data = response.json()
     assert "evidence" in data
 
-def test_api_auth_protection_on_investigate():
+def test_api_auth_protection_on_investigate(monkeypatch):
+    import app as app_module
+    monkeypatch.setattr(app_module, "AUTH_DISABLED", False)
+
     # Without API key -> 401 Unauthorized
     response = client.post("/api/cases/HHG-001/investigate")
     assert response.status_code == 401
@@ -63,7 +66,10 @@ def test_api_auth_protection_on_investigate():
     response = client.post("/api/cases/HHG-001/investigate", headers={"X-API-Key": "wrong-key"})
     assert response.status_code == 401
 
-def test_api_auth_success_with_valid_key():
+def test_api_auth_success_with_valid_key(monkeypatch):
+    import app as app_module
+    monkeypatch.setattr(app_module, "AUTH_DISABLED", False)
+
     # With valid API key -> routes to handler (not 401)
     response = client.post(
         "/api/cases/HHG-001/investigate",

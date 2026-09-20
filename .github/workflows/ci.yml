@@ -29,7 +29,6 @@ jobs:
 
     - name: Run Test Suite (Offline)
       env:
-        AUTH_DISABLED: "true"
         DATA_REPOSITORY_BACKEND: "local"
         SIMULATION_MODE: "true"
       run: |
