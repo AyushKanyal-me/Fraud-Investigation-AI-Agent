@@ -25,18 +25,18 @@
             ]
           },
           {
-            "claim": "Customer denied transaction 3514030 ($77.07) when contacted",
+            "claim": "Cardholder response received via customer_portal: 'Customer confirmed they received an alert and stated: I did not authorize transaction 3514030 ($77.07).'",
             "source": "customer",
-            "ref": "evidence_request:1",
+            "ref": "evidence_request:test-evidence-req-001",
             "entity_ids": [
               "3514030"
             ]
           }
         ],
         "similar_prior_cases": [
-          "CC-1066",
-          "CC-1673",
-          "CC-2964"
+          "CC-0001",
+          "CC-0002",
+          "CC-0003"
         ],
         "summary": "Investigation of case HHG-001 confirmed unauthorized out_of_region_use activity on card C12382-K1 totaling $77.07 USD across 1 transaction(s). Graph traversal identified device profile unknown linking 0 connected card(s). Protective card block and case records have been initiated in compliance with Bank Fraud Policy R2/R6.",
         "written_to_graph": true,
@@ -45,8 +45,13 @@
       "evidence_requests": [
         {
           "type": "customer_validation",
-          "asked_after_step": 7,
-          "assumed_response": "Customer states they received the fraud inquiry SMS and did not authorize the $77.07 purchase on card C12382-K1."
+          "asked_after_step": 6,
+          "assumed_response": "Customer confirmed they received an alert and stated: I did not authorize transaction 3514030 ($77.07).",
+          "provenance": {
+            "source": "customer_portal",
+            "request_id": "test-evidence-req-001",
+            "actor_id": "cardholder_web_portal"
+          }
         }
       ],
       "next_best_actions": {
@@ -80,9 +85,9 @@
         "activity_dates": []
       },
       "stop_reason": "Definitive evidence of unauthorized activity established; episode exposure computed and protective actions executed.",
-      "tool_calls": 8,
+      "tool_calls": 7,
       "tokens": 0,
-      "latency_s": 0.79,
+      "latency_s": 0.0,
       "explainability_trace": [
         {
           "step": "Initialize Case",
@@ -98,7 +103,7 @@
         },
         {
           "step": "Customer Verification",
-          "thought": "Simulated customer_validation: outcome=DENIED_UNAUTHORIZED. Response: 'Customer states they received the fraud inquiry SMS and did not authorize the $77.07 purchase on card C12382-K1.'."
+          "thought": "Processed real external evidence (customer_portal): outcome=DENIED_UNAUTHORIZED. Response: 'Customer confirmed they received an alert and stated: I did not authorize transaction 3514030 ($77.07).'."
         },
         {
           "step": "GraphRAG Policy Retrieval",
@@ -115,10 +120,6 @@
         {
           "step": "SAR Generation",
           "thought": "SAR filing not triggered under bank policy thresholds."
-        },
-        {
-          "step": "Persist & Memory",
-          "thought": "Persisted case HHG-001 to TigerGraph (success=True). Case memory updated."
         }
       ]
     },

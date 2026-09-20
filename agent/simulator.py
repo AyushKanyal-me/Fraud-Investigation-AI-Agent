@@ -1,12 +1,14 @@
 """
 Dynamic Customer & Authentication Simulation Engine.
 Simulates realistic cardholder responses and 2FA step-up authentication interactions
-using LLM reasoning and contextual scenario ground truth.
+using LLM reasoning and contextual scenario ground truth with explicit provenance tagging.
 """
 
 import sys
+import uuid
 from pathlib import Path
 from typing import Dict, Any, Tuple, Optional
+from datetime import datetime, timezone
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
@@ -32,14 +34,18 @@ class CustomerSimulator:
         is_region_anomaly: bool = False,
         is_card_testing: bool = False,
         has_shared_device_ring: bool = False
-    ) -> Tuple[CustomerReplyOutcome, str, str]:
+    ) -> Tuple[CustomerReplyOutcome, str, str, Dict[str, Any]]:
         """
         Simulates customer interaction or 2FA step-up authentication.
         Returns:
             - outcome: CustomerReplyOutcome enum
             - inquiry_type: "customer_validation" or "step_up_auth"
             - response_text: Natural language response from customer / auth system
+            - provenance: Provenance metadata dict (source, request_id, timestamp, actor_id)
         """
+        request_id = str(uuid.uuid4())
+        timestamp = datetime.now(timezone.utc).isoformat()
+
         # 1. Determine scenario ground truth and inquiry type
         if is_recurring_dispute:
             outcome = CustomerReplyOutcome.RECURRING_DISPUTE
@@ -78,6 +84,14 @@ class CustomerSimulator:
             scenario_truth = f"Customer was contacted regarding unexpected transaction {flagged_txn_id} (${txn_amt:.2f}) and reports not recognizing it."
             default_text = f"Customer states they received the fraud inquiry SMS and did not authorize the ${txn_amt:.2f} purchase on card {card_id}."
 
+        provenance = {
+            "source": "simulator",
+            "request_id": request_id,
+            "timestamp": timestamp,
+            "actor_id": "customer_simulator_v2",
+            "scenario_truth": scenario_truth
+        }
+
         # 2. Try LLM simulation for rich conversational fidelity if LLM is callable
         if self.llm_caller:
             prompt = CUSTOMER_SIMULATOR_PROMPT.format(
@@ -91,6 +105,6 @@ class CustomerSimulator:
             )
             llm_reply = self.llm_caller(prompt)
             if llm_reply and len(llm_reply.strip()) > 10:
-                return outcome, inquiry_type, llm_reply.strip()
+                return outcome, inquiry_type, llm_reply.strip(), provenance
 
-        return outcome, inquiry_type, default_text
+        return outcome, inquiry_type, default_text, provenance

@@ -10,20 +10,28 @@ import time
 import pandas as pd
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from fastapi import FastAPI, HTTPException, Query, Body
+from fastapi import FastAPI, HTTPException, Query, Body, Header, Depends, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security.api_key import APIKeyHeader
 
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR))
 
-from config import DATASET_DIR, ANSWERS_DIR, POLICY_RULES, ACTION_TYPES, APPROVAL_ROUTES
+from config import (
+    DATASET_DIR, ANSWERS_DIR, CASES_DIR, POLICY_RULES, ACTION_TYPES,
+    APPROVAL_ROUTES, CORS_ALLOWED_ORIGINS, API_AUTH_KEY, AUTH_DISABLED
+)
 from agent.tools import GraphTools
 from rag.vector_store import FraudVectorStore
 from memory.case_memory import CaseMemory
 from agent.workflow import FraudInvestigationWorkflow
+from agent.policy import POLICY_VERSION
+from agent.persistence import get_persistence_manager
+from agent.checkpoints import get_checkpoint_store
+from agent.validator import validate_case_invariants
 
 # Initialize FastAPI App
 app = FastAPI(
@@ -32,47 +40,72 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# Enable CORS for Frontend Development (supports React, Next.js, Vite, Vue, Angular)
+# Enable Restricted CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# API Key Authentication Scheme
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+def verify_api_key(api_key: Optional[str] = Security(api_key_header)):
+    if AUTH_DISABLED:
+        return "auth_bypassed"
+    if not api_key or api_key != API_AUTH_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API Key. Provide valid 'X-API-Key' header."
+        )
+    return api_key
 
 # Global Singletons
 vector_store = FraudVectorStore()
 memory = CaseMemory()
 tools = GraphTools(vector_store=vector_store)
 workflow = FraudInvestigationWorkflow(tools=tools, memory=memory, vector_store=vector_store)
+persistence_mgr = get_persistence_manager()
+checkpoint_store = get_checkpoint_store()
 
 # Pydantic Schemas
 class CustomInvestigateRequest(BaseModel):
-    case_id: str
-    opened_at: Optional[str] = "2016-12-30 12:00:00"
-    trigger_type: str = "risk_score"  # "risk_score" | "customer_report" | "analyst_request"
-    trigger_text: Optional[str] = "Real-time model risk threshold exceeded"
-    flagged_txn_id: str
-    card_id: Optional[str] = ""
-    customer_id: Optional[str] = ""
-    risk_score: Optional[float] = 0.85
+    case_id: str = Field(..., description="Unique case identifier, e.g. HHG-001")
+    opened_at: Optional[str] = Field("2016-12-30 12:00:00", description="Alert opening timestamp")
+    trigger_type: str = Field("risk_score", description="risk_score | customer_report | analyst_request")
+    trigger_text: Optional[str] = Field("Real-time model risk threshold exceeded", description="Trigger context")
+    flagged_txn_id: str = Field(..., description="Primary transaction ID triggering alert")
+    card_id: Optional[str] = Field("", description="Card ID")
+    customer_id: Optional[str] = Field("", description="Customer ID")
+    risk_score: Optional[float] = Field(0.85, description="Initial risk score")
+
+class EvidenceSubmissionRequest(BaseModel):
+    request_id: str = Field(..., description="Unique evidence request ID")
+    response_text: str = Field(..., description="Response provided by customer or analyst")
+    source: str = Field("customer_portal", description="Source of evidence: customer_portal | analyst | external")
+    actor_id: Optional[str] = Field("customer", description="Actor providing evidence")
 
 # -------------------------------------------------------------
-# 1. Health & System Metrics
+# 1. Health & System Metrics (Read-Only)
 # -------------------------------------------------------------
+@app.get("/healthz", tags=["System"])
 @app.get("/api/health", tags=["System"])
 def get_health():
     """Returns server and subsystem health status."""
     return {
         "status": "healthy",
         "agent_engine": "LangGraph StateGraph 2.0",
+        "policy_version": POLICY_VERSION,
         "vector_store_docs": vector_store.collection.count() if vector_store.collection else len(vector_store.documents),
         "memory_cases_count": len(memory.cases),
         "tigergraph_connected": tools.conn is not None,
         "dataset_transactions_loaded": len(tools.df_txn) if hasattr(tools, "df_txn") else 0
     }
 
+@app.get("/metrics", tags=["Dashboard"])
 @app.get("/api/stats", tags=["Dashboard"])
 def get_dashboard_stats():
     """Aggregates high-level statistics across all investigated cases."""
@@ -80,7 +113,7 @@ def get_dashboard_stats():
     if ANSWERS_DIR.exists():
         for p in ANSWERS_DIR.glob("*.json"):
             try:
-                with open(p, "r") as f:
+                with open(p, "r", encoding="utf-8") as f:
                     answers.append(json.load(f))
             except Exception:
                 pass
@@ -107,7 +140,7 @@ def get_dashboard_stats():
     }
 
 # -------------------------------------------------------------
-# 2. Case Listing & Detail
+# 2. Case Listing & Detail (Read-Only GET Endpoints)
 # -------------------------------------------------------------
 @app.get("/api/cases", tags=["Cases"])
 def list_cases(status: Optional[str] = Query(None, description="Filter by status: fraud, legitimate, uncertain")):
@@ -121,8 +154,16 @@ def list_cases(status: Optional[str] = Query(None, description="Filter by status
 
     for _, row in df_cases.iterrows():
         cid = str(row["case_id"])
-        ans_file = ANSWERS_DIR / f"{cid}.json"
-        
+        cdata = persistence_mgr.get_case_state(cid)
+        if not cdata:
+            ans_file = ANSWERS_DIR / f"{cid}.json"
+            if ans_file.exists():
+                try:
+                    with open(ans_file, "r", encoding="utf-8") as f:
+                        cdata = json.load(f)
+                except Exception:
+                    cdata = None
+
         investigated = False
         verdict = "uninvestigated"
         prob = None
@@ -131,20 +172,15 @@ def list_cases(status: Optional[str] = Query(None, description="Filter by status
         sar_file = False
         summary = ""
 
-        if ans_file.exists():
-            try:
-                with open(ans_file, "r") as f:
-                    cdata = json.load(f)
-                    c_obj = cdata.get("case", {})
-                    investigated = True
-                    verdict = c_obj.get("verdict", "uncertain")
-                    prob = c_obj.get("fraud_probability")
-                    pattern = c_obj.get("pattern", "none")
-                    exposure = c_obj.get("exposure_usd", 0.0)
-                    summary = c_obj.get("summary", "")
-                    sar_file = cdata.get("sar", {}).get("file", False)
-            except Exception:
-                pass
+        if cdata:
+            c_obj = cdata.get("case", {})
+            investigated = True
+            verdict = c_obj.get("verdict", "uncertain")
+            prob = c_obj.get("fraud_probability")
+            pattern = c_obj.get("pattern", "none")
+            exposure = c_obj.get("exposure_usd", 0.0)
+            summary = c_obj.get("summary", "")
+            sar_file = cdata.get("sar", {}).get("file", False)
 
         if status and status.lower() != "all" and verdict != status.lower():
             continue
@@ -169,33 +205,68 @@ def list_cases(status: Optional[str] = Query(None, description="Filter by status
 
     return case_list
 
+@app.get("/cases/{case_id}", tags=["Cases"])
 @app.get("/api/cases/{case_id}", tags=["Cases"])
 def get_case_detail(case_id: str):
     """Returns the full investigation JSON payload for a given case_id."""
+    cdata = persistence_mgr.get_case_state(case_id)
+    if cdata:
+        return cdata
+
     ans_file = ANSWERS_DIR / f"{case_id}.json"
     if ans_file.exists():
-        with open(ans_file, "r") as f:
+        with open(ans_file, "r", encoding="utf-8") as f:
             return json.load(f)
-
-    # If not yet saved, try finding in case_pack and running
-    case_pack_file = DATASET_DIR / "case_pack.csv"
-    if case_pack_file.exists():
-        df_cases = pd.read_csv(case_pack_file)
-        matches = df_cases[df_cases["case_id"] == case_id]
-        if not matches.empty:
-            result = workflow.run_investigation(matches.iloc[0].to_dict())
-            with open(ans_file, "w") as f:
-                json.dump(result, f, indent=2)
-            return result
 
     raise HTTPException(status_code=404, detail=f"Case {case_id} not found")
 
+@app.get("/cases/{case_id}/audit-log", tags=["Cases"])
+@app.get("/api/cases/{case_id}/audit-log", tags=["Cases"])
+def get_case_audit_log(case_id: str):
+    """Returns the structured, tamper-evident audit trail for a given case."""
+    trail = persistence_mgr.get_audit_trail(case_id)
+    return {
+        "case_id": case_id,
+        "event_count": len(trail),
+        "audit_events": trail
+    }
+
+@app.get("/cases/{case_id}/evidence", tags=["Cases"])
+@app.get("/api/cases/{case_id}/evidence", tags=["Cases"])
+def get_case_evidence(case_id: str):
+    """Returns all evidence items retrieved and cited for a given case."""
+    cdata = persistence_mgr.get_case_state(case_id)
+    if not cdata:
+        ans_file = ANSWERS_DIR / f"{case_id}.json"
+        if ans_file.exists():
+            with open(ans_file, "r", encoding="utf-8") as f:
+                cdata = json.load(f)
+    if not cdata:
+        raise HTTPException(status_code=404, detail=f"Case {case_id} not found")
+    
+    evidence_items = cdata.get("case", {}).get("evidence", [])
+    evidence_requests = cdata.get("evidence_requests", [])
+    return {
+        "case_id": case_id,
+        "evidence": evidence_items,
+        "evidence_requests": evidence_requests
+    }
+
+@app.get("/cases/{case_id}/checkpoints", tags=["Cases"])
+@app.get("/api/cases/{case_id}/checkpoints", tags=["Cases"])
+def get_case_checkpoint(case_id: str):
+    """Returns the active checkpoint for an investigation awaiting evidence."""
+    cp = checkpoint_store.get_checkpoint(case_id)
+    if not cp:
+        return {"case_id": case_id, "status": "no_pending_checkpoint", "checkpoint": None}
+    return {"case_id": case_id, "status": "awaiting_evidence", "checkpoint": cp}
+
 # -------------------------------------------------------------
-# 3. Live Investigation Endpoints
+# 3. Investigation Endpoints (Secured by API Key)
 # -------------------------------------------------------------
 @app.post("/api/cases/{case_id}/investigate", tags=["Investigation"])
-def trigger_investigation(case_id: str):
-    """Triggers live LangGraph investigation for a case and updates the answer artifacts."""
+def trigger_investigation(case_id: str, auth: str = Depends(verify_api_key)):
+    """Triggers live LangGraph investigation for a case and atomically updates persistence."""
     case_pack_file = DATASET_DIR / "case_pack.csv"
     if not case_pack_file.exists():
         raise HTTPException(status_code=404, detail="case_pack.csv not found")
@@ -208,21 +279,73 @@ def trigger_investigation(case_id: str):
     case_row = matches.iloc[0].to_dict()
     result = workflow.run_investigation(case_row)
 
-    # Save to disk
-    ans_file = ANSWERS_DIR / f"{case_id}.json"
-    cases_file = BASE_DIR / "cases" / f"{case_id}.json"
-    with open(ans_file, "w") as f:
-        json.dump(result, f, indent=2)
-    with open(cases_file, "w") as f:
-        json.dump(result, f, indent=2)
+    # Validate output
+    is_valid, errors, _ = validate_case_invariants(result, case_id_expected=case_id)
+    if not is_valid:
+        raise HTTPException(status_code=500, detail=f"Investigation output failed validation: {errors}")
+
+    # Atomic Persistence
+    persistence_mgr.persist_case_state(case_id, result, actor="api_user")
+    persistence_mgr.persist_answer_artifact(case_id, result)
 
     return result
 
 @app.post("/api/investigate/custom", tags=["Investigation"])
-def investigate_custom_transaction(req: CustomInvestigateRequest):
+def investigate_custom_transaction(req: CustomInvestigateRequest, auth: str = Depends(verify_api_key)):
     """Investigates an arbitrary transaction or alert payload using the full LangGraph pipeline."""
     case_dict = req.dict()
     result = workflow.run_investigation(case_dict)
+    
+    cid = req.case_id
+    persistence_mgr.persist_case_state(cid, result, actor="custom_api_user")
+    persistence_mgr.persist_answer_artifact(cid, result)
+    return result
+
+@app.post("/cases/{case_id}/evidence/submit", tags=["Evidence Workflow"])
+@app.post("/api/cases/{case_id}/evidence/submit", tags=["Evidence Workflow"])
+def submit_external_evidence(case_id: str, req: EvidenceSubmissionRequest, auth: str = Depends(verify_api_key)):
+    """
+    Submits real customer / analyst evidence for a case awaiting evidence and resumes workflow to final disposition.
+    """
+    case_pack_file = DATASET_DIR / "case_pack.csv"
+    if not case_pack_file.exists():
+        raise HTTPException(status_code=404, detail="case_pack.csv not found")
+
+    df_cases = pd.read_csv(case_pack_file)
+    matches = df_cases[df_cases["case_id"] == case_id]
+    if matches.empty:
+        raise HTTPException(status_code=404, detail=f"Case {case_id} not found in case pack")
+
+    case_row = matches.iloc[0].to_dict()
+    
+    # Resume workflow with submitted evidence
+    result = workflow.run_investigation(case_row, submitted_evidence=req.model_dump())
+
+    # Validate output
+    is_valid, errors, _ = validate_case_invariants(result, case_id_expected=case_id)
+    if not is_valid:
+        raise HTTPException(status_code=500, detail=f"Resumed investigation output failed validation: {errors}")
+
+    # Atomic Persistence
+    persistence_mgr.persist_case_state(case_id, result, actor=f"evidence_submitter_{req.actor_id}")
+    persistence_mgr.persist_answer_artifact(case_id, result)
+
+    # Clean up checkpoint
+    checkpoint_store.delete_checkpoint(case_id, request_id=req.request_id)
+
+    # Log audit event
+    persistence_mgr.audit_logger.log_event(
+        case_id=case_id,
+        event_type="EXTERNAL_EVIDENCE_RESUMED",
+        actor=req.actor_id,
+        details={
+            "request_id": req.request_id,
+            "source": req.source,
+            "final_verdict": result.get("case", {}).get("verdict"),
+            "final_status": result.get("case", {}).get("status")
+        }
+    )
+
     return result
 
 # -------------------------------------------------------------
@@ -234,18 +357,19 @@ def get_case_subgraph(case_id: str):
     Returns node-link graph data (nodes & edges) for interactive rendering in the frontend.
     Compatible with Cytoscape.js, Vis.js, D3.js, and ECharts.
     """
-    ans_file = ANSWERS_DIR / f"{case_id}.json"
-    if not ans_file.exists():
+    cdata = persistence_mgr.get_case_state(case_id)
+    if not cdata:
+        ans_file = ANSWERS_DIR / f"{case_id}.json"
+        if ans_file.exists():
+            with open(ans_file, "r", encoding="utf-8") as f:
+                cdata = json.load(f)
+    if not cdata:
         raise HTTPException(status_code=404, detail=f"Case {case_id} not found")
 
-    with open(ans_file, "r") as f:
-        case_data = json.load(f)
-
-    c_obj = case_data.get("case", {})
+    c_obj = cdata.get("case", {})
     verdict = c_obj.get("verdict", "uncertain")
     flagged_txn_id = ""
     
-    # Lookup case pack for base metadata
     case_pack_file = DATASET_DIR / "case_pack.csv"
     customer_id = ""
     card_id = ""
@@ -361,7 +485,7 @@ def get_case_subgraph(case_id: str):
 def get_policies():
     """Returns the full Bank Fraud Policy rules (R1-R10) and approval routes."""
     return {
-        "policy_version": "1.0",
+        "policy_version": POLICY_VERSION,
         "rules": POLICY_RULES,
         "action_types": ACTION_TYPES,
         "approval_routes": APPROVAL_ROUTES

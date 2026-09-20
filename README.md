@@ -109,6 +109,19 @@ The agent operates strictly within the bank's policy rules:
 
 ---
 
+### 4a. Deterministic Policy Engine vs. LLM Assistance Boundaries
+
+A core architectural principle of this system is strict governance:
+- **Authoritative Deterministic Layer (`agent/policy.py`, `agent/validator.py`):**
+  - All decisions regarding actions, approval routes (`auto`, `L1`, `L2`), exposure calculation, and SAR filing mandates are 100% deterministic and strictly evaluated by code based on Rules R1–R10.
+  - LLMs **never** determine whether a case is blocked, whether a SAR is filed, or which approval route is required.
+  - Invariant validators strictly guarantee compliance with banking policy.
+- **LLM Assistance Layer (`agent/graph.py`, `agent/prompts.py`, `agent/schemas.py`):**
+  - LLMs are utilized strictly for auxiliary cognitive tasks: formulating initial hypotheses, simulating realistic customer SMS/2FA dialogues, and drafting narrative explanations for SAR filings.
+  - All structured LLM claims are grounded and validated against verified graph evidence.
+
+---
+
 ## 5. Project Structure
 
 ```
@@ -116,21 +129,20 @@ The agent operates strictly within the bank's policy rules:
 ├── agent/
 │   ├── graph.py             # LangGraph StateGraph engine (9 state nodes)
 │   ├── workflow.py          # Unified workflow orchestrator
-│   ├── tools.py             # TigerGraph tools (baseline, episode, device rings)
-│   ├── langchain_tools.py   # LangChain tool bindings
-│   ├── simulator.py         # Dynamic customer dialogue & 2FA simulator
-│   ├── policy.py            # Rule evaluator & approval router (R1-R10)
-│   ├── prompts.py           # Investigation, simulation, and SAR prompt templates
-│   ├── card_identity.py     # Canonical card mapping engine
-│   └── canonical_card_map.pkl # Pre-computed card mapping index
+│   ├── tools.py             # Graph analytics tools (baseline, episode, device rings)
+│   ├── repository/          # Repository abstraction (Local & TigerGraph backends)
+│   ├── policy.py            # Canonical rule evaluator & approval router (R1-R10)
+│   ├── validator.py         # Invariant & schema validator
+│   ├── simulator.py         # Customer dialogue & 2FA simulator
+│   ├── checkpoints.py       # Durable state checkpoint store
+│   ├── persistence.py       # Atomic file storage & audit logging
+│   └── card_identity.py     # Canonical card mapping engine
 ├── rag/
 │   ├── vector_store.py      # ChromaDB vector store for GraphRAG
 │   └── chroma_db/           # Persistent vector embeddings
 ├── memory/
 │   ├── case_memory.py       # Cross-case working memory
 │   └── case_memory.json     # Working memory storage
-├── output/
-│   └── validator.py         # Semantic output schema and policy validator
 ├── schema/
 │   ├── create_schema.gsql   # TigerGraph vertex and edge schema definitions
 │   └── setup_schema.py      # Schema deployment script
@@ -140,8 +152,9 @@ The agent operates strictly within the bank's policy rules:
 │   ├── load_data.py         # Dataset ingestion pipeline
 │   └── build_next_edges.py  # Temporal transaction edge builder
 ├── answers/                 # Generated investigation JSON artifacts
-├── cases/                   # Mirror case deliverables
-├── app.py                   # FastAPI backend server with CORS and visualizer endpoints
+├── cases/                   # Internal investigation state records
+├── tests/                   # Comprehensive offline test suite (Unit & Integration)
+├── app.py                   # FastAPI backend server with CORS and auth
 ├── run_cases.py             # Batch investigation execution harness
 ├── config.py                # Configuration and environment bindings
 ├── requirements.txt         # Project dependencies
@@ -164,6 +177,11 @@ Create a `.env` file in the root directory:
 # LLM Configuration (Optional: system operates with robust fallback if unset)
 GEMINI_API_KEY=YOUR_API_KEY_HERE
 
+# API Security
+API_AUTH_KEY=tg-fraud-key-dev-2026
+AUTH_DISABLED=false
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
+
 # TigerGraph Settings
 TIGERGRAPH_HOST=http://localhost
 TIGERGRAPH_RESTPP_PORT=9000
@@ -175,9 +193,12 @@ TIGERGRAPH_SECRET=
 TIGERGRAPH_API_TOKEN=
 
 # Directory Settings
-DATASET_DIR=Datatset
+DATASET_DIR=Dataset
 REGULATIONS_DIR=regulations
 ANSWERS_DIR=answers
+CASES_DIR=cases
+CHECKPOINTS_DIR=checkpoints
+AUDIT_LOG_DIR=logs
 MEMORY_FILE=memory/case_memory.json
 ```
 

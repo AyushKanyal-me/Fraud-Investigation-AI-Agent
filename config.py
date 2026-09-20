@@ -6,8 +6,20 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
-# API Keys
+# API Keys & Auth
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "YOUR_GEMINI_API_KEY_HERE"
+API_AUTH_KEY = os.getenv("API_AUTH_KEY", "tg-fraud-key-dev-2026")
+AUTH_DISABLED = os.getenv("AUTH_DISABLED", "false").lower() in ("true", "1", "yes")
+
+# Server / CORS Settings
+CORS_ALLOWED_ORIGINS = [
+    origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:8000").split(",")
+    if origin.strip()
+]
+
+# Mode Flags
+SIMULATION_MODE = os.getenv("SIMULATION_MODE", "true").lower() in ("true", "1", "yes")
+DATA_REPOSITORY_BACKEND = os.getenv("DATA_REPOSITORY_BACKEND", "local")
 
 # TigerGraph Settings
 TG_HOST = os.getenv("TIGERGRAPH_HOST", "http://localhost")
@@ -20,17 +32,23 @@ TG_SECRET = os.getenv("TIGERGRAPH_SECRET", "")
 TG_API_TOKEN = os.getenv("TIGERGRAPH_API_TOKEN", "")
 
 # Directory Paths
-DATASET_DIR = BASE_DIR / os.getenv("DATASET_DIR", "Datatset")
+DATASET_DIR = BASE_DIR / os.getenv("DATASET_DIR", "Dataset")
 REGULATIONS_DIR = BASE_DIR / os.getenv("REGULATIONS_DIR", "regulations")
 ANSWERS_DIR = BASE_DIR / os.getenv("ANSWERS_DIR", "answers")
+CASES_DIR = BASE_DIR / os.getenv("CASES_DIR", "cases")
+CHECKPOINTS_DIR = BASE_DIR / os.getenv("CHECKPOINTS_DIR", "checkpoints")
+AUDIT_LOG_DIR = BASE_DIR / os.getenv("AUDIT_LOG_DIR", "logs")
 MEMORY_FILE = BASE_DIR / os.getenv("MEMORY_FILE", "memory/case_memory.json")
 
 # Ensure required directories exist
 ANSWERS_DIR.mkdir(parents=True, exist_ok=True)
+CASES_DIR.mkdir(parents=True, exist_ok=True)
+CHECKPOINTS_DIR.mkdir(parents=True, exist_ok=True)
+AUDIT_LOG_DIR.mkdir(parents=True, exist_ok=True)
 REGULATIONS_DIR.mkdir(parents=True, exist_ok=True)
 MEMORY_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-# Fraud Patterns Enum
+# Canonical Fraud Patterns Enum (Dataset/README.md)
 PATTERNS = [
     "card_testing",
     "card_not_present_fraud",
@@ -41,7 +59,7 @@ PATTERNS = [
     "none"
 ]
 
-# Action Types Enum (Fraud Policy Section 1)
+# Canonical Action Types Enum (Fraud Policy Section 1)
 ACTION_TYPES = [
     "ALLOW_TRANSACTION",
     "DECLINE_TRANSACTION",
@@ -59,79 +77,79 @@ ACTION_TYPES = [
     "CLOSE_NO_FRAUD"
 ]
 
-# Approval Routes Enum
+# Canonical Approval Routes Enum (Fraud Policy Section 2)
 APPROVAL_ROUTES = ["auto", "L1", "L2"]
 
-# Policy Rules Definition
+# Canonical Policy Rules Definition (Dataset/README.md R1-R10)
 POLICY_RULES = {
     "R1": {
         "id": "R1",
-        "title": "Card Testing Pattern",
-        "description": "≥3 small txns (<$15) within 10 minutes, followed by a large txn ($>100) on the same card.",
-        "actions": ["BLOCK_CARD", "NOTIFY_CUSTOMER_SMS"],
+        "title": "Verify Before Blocking on Weak Signal",
+        "description": "If the case rests on a single signal (including risk score alone) and assessed fraud probability is below 0.70, recommend VERIFY_WITH_CUSTOMER or STEP_UP_AUTH before any block. Blocking a legitimate customer on one signal is a policy breach.",
+        "actions": ["VERIFY_WITH_CUSTOMER", "STEP_UP_AUTH"],
         "sar_trigger": False
     },
     "R2": {
         "id": "R2",
-        "title": "New Device + High Amount (CNP)",
-        "description": "Card-not-present txn on an unseen DeviceID/DeviceType where amount > $500 or amount > 3x 30-day card average.",
-        "actions": ["TEMP_SUSPEND", "REQUEST_ID_DOCS", "NOTIFY_CUSTOMER_SMS"],
-        "sar_trigger": False
+        "title": "Customer Denies Transaction",
+        "description": "Customer denies the transaction. Recommend BLOCK_CARD and CREATE_CASE. Add FILE_REPORT if exposure exceeds $1,000 or the case connects to a shared device profile or another card's fraud.",
+        "actions": ["BLOCK_CARD", "CREATE_CASE", "FILE_REPORT"],
+        "sar_trigger": True
     },
     "R3": {
         "id": "R3",
-        "title": "Geographic Anomaly / Impossible Speed",
-        "description": "Txn occurring in an addr1/addr2 distinct from card's 30-day primary region within < 4 hours of previous transaction in home region.",
-        "actions": ["TEMP_SUSPEND", "NOTIFY_CUSTOMER_CALL"],
+        "title": "Customer Confirms Transaction",
+        "description": "Customer confirms the transaction. Recommend CLOSE_NO_FRAUD and ALLOW_TRANSACTION. Note the confirmation in the case file.",
+        "actions": ["ALLOW_TRANSACTION", "CLOSE_NO_FRAUD"],
         "sar_trigger": False
     },
     "R4": {
         "id": "R4",
-        "title": "Account Takeover Signature",
-        "description": "Email domain change (P_emaildomain or R_emaildomain mismatch with customer profile) + new device + password reset / high value txn within 24 hours.",
-        "actions": ["FORCE_PASSWORD_RESET", "BLOCK_CARD", "REQUEST_ID_DOCS"],
-        "sar_trigger": True
+        "title": "No Customer Reply Within 24 Hours",
+        "description": "No reply within 24 hours. Recommend MONITOR_CARD and DECLINE_TRANSACTION for pending authorizations. Escalate (ESCALATE_TO_ANALYST) if exposure exceeds $500.",
+        "actions": ["MONITOR_CARD", "DECLINE_TRANSACTION", "ESCALATE_TO_ANALYST"],
+        "sar_trigger": False
     },
     "R5": {
         "id": "R5",
-        "title": "Shared Entity Fraud Ring",
-        "description": "Card or Customer shares DeviceID or Email with 2+ other cards that had confirmed fraud in closed_cases_history.",
-        "actions": ["BLOCK_CARD", "ADD_TO_WATCHLIST", "FILE_SAR"],
-        "sar_trigger": True
+        "title": "Card Testing Pattern",
+        "description": "Three or more small online authorizations on one card within an hour, followed by a larger purchase: recommend DECLINE_TRANSACTION and STEP_UP_AUTH. If a purchase over $100 has already cleared, recommend BLOCK_CARD.",
+        "actions": ["DECLINE_TRANSACTION", "STEP_UP_AUTH", "BLOCK_CARD"],
+        "sar_trigger": False
     },
     "R6": {
         "id": "R6",
-        "title": "High Exposure Threshold for Card Block Approval",
-        "description": "If confirmed/estimated fraud exposure ≤ $2,500, BLOCK_CARD routes to L1. If > $2,500, BLOCK_CARD requires L2 approval.",
-        "actions": ["BLOCK_CARD"],
-        "sar_trigger": False
+        "title": "Shared Origin Across Cards",
+        "description": "When several cards show fraud from the same device profile, billing region, or recipient email in one window, name shared element, recommend CREATE_CASE, FILE_REPORT, and MONITOR_CONNECTED_CARDS for every card that shares it.",
+        "actions": ["CREATE_CASE", "FILE_REPORT", "MONITOR_CONNECTED_CARDS"],
+        "sar_trigger": True
     },
     "R7": {
         "id": "R7",
-        "title": "SAR Filing Mandatory Criteria",
-        "description": "SAR filing is mandatory if total fraud exposure across connected entities ≥ $10,000, OR if Account Takeover / Fraud Ring (R4/R5) is confirmed with exposure ≥ $5,000, OR structured transactions (FinCEN AML).",
-        "actions": ["FILE_SAR"],
-        "sar_trigger": True
+        "title": "Disputed But Legitimate Recurring Pattern",
+        "description": "When customer disputes a charge that matches their recurring pattern (same merchant, amount, monthly), recommend CREATE_CASE, VERIFY_WITH_CUSTOMER, and WARN_CUSTOMER. Do not block. Final resolution closes as CLOSE_NO_FRAUD.",
+        "actions": ["CREATE_CASE", "VERIFY_WITH_CUSTOMER", "WARN_CUSTOMER", "CLOSE_NO_FRAUD"],
+        "sar_trigger": False
     },
     "R8": {
         "id": "R8",
-        "title": "Customer Communication Rules",
-        "description": "NOTIFY_CUSTOMER_SMS is auto-approved. NOTIFY_CUSTOMER_CALL requires L1 approval. TEMP_SUSPEND is auto-approved.",
-        "actions": ["NOTIFY_CUSTOMER_SMS", "NOTIFY_CUSTOMER_CALL", "TEMP_SUSPEND"],
+        "title": "Escalate When Uncertain and Exposed",
+        "description": "If verdict is uncertain and exposure exceeds $500, or evidence conflicts, recommend ESCALATE_TO_ANALYST.",
+        "actions": ["CREATE_CASE", "MONITOR_CARD", "ESCALATE_TO_ANALYST"],
         "sar_trigger": False
     },
     "R9": {
         "id": "R9",
-        "title": "Legitimate Behavior & False Positive Clearance",
-        "description": "If cardholder confirms transaction via simulated reply OR txn aligns with 90-day spending history with matching device/IP/email, close with CLOSE_NO_ACTION.",
-        "actions": ["CLOSE_NO_ACTION"],
-        "sar_trigger": False
+        "title": "Undocumented Fraud Patterns",
+        "description": "When activity fits none of the known patterns but evidence shows coordinated or repeated abuse across customers, recommend CREATE_CASE, FILE_REPORT, and ESCALATE_TO_ANALYST, and describe pattern in own words.",
+        "actions": ["CREATE_CASE", "FILE_REPORT", "ESCALATE_TO_ANALYST"],
+        "sar_trigger": True
     },
     "R10": {
         "id": "R10",
-        "title": "Watchlist & Monitoring Placement",
-        "description": "Place customer/card on watchlist if fraud probability is between 0.40 and 0.70 without conclusive proof, or if card is connected to suspicious clusters.",
-        "actions": ["ADD_TO_WATCHLIST"],
+        "title": "Restrictions on Blocking All Cards",
+        "description": "Never BLOCK_ALL_CARDS unless at least two of customer's cards show confirmed fraud or customer's credentials are confirmed compromised.",
+        "actions": ["BLOCK_ALL_CARDS"],
         "sar_trigger": False
     }
 }

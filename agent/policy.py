@@ -1,6 +1,49 @@
 import enum
 from typing import List, Dict, Any, Tuple, Optional
 
+POLICY_VERSION = "2026.1.0"
+
+class CaseStatus(str, enum.Enum):
+    OPEN = "open"
+    CLOSED_FRAUD = "closed_fraud"
+    CLOSED_LEGITIMATE = "closed_legitimate"
+    ESCALATED = "escalated"
+
+class CaseVerdict(str, enum.Enum):
+    FRAUD = "fraud"
+    LEGITIMATE = "legitimate"
+    UNCERTAIN = "uncertain"
+
+class FraudPattern(str, enum.Enum):
+    CARD_TESTING = "card_testing"
+    CARD_NOT_PRESENT_FRAUD = "card_not_present_fraud"
+    CARD_NOT_PRESENT_NEW_DEVICE = "card_not_present_new_device"
+    OUT_OF_REGION_USE = "out_of_region_use"
+    ACCOUNT_TAKEOVER = "account_takeover"
+    UNDOCUMENTED = "undocumented"
+    NONE = "none"
+
+class ActionType(str, enum.Enum):
+    ALLOW_TRANSACTION = "ALLOW_TRANSACTION"
+    DECLINE_TRANSACTION = "DECLINE_TRANSACTION"
+    MONITOR_CARD = "MONITOR_CARD"
+    MONITOR_CONNECTED_CARDS = "MONITOR_CONNECTED_CARDS"
+    WARN_CUSTOMER = "WARN_CUSTOMER"
+    VERIFY_WITH_CUSTOMER = "VERIFY_WITH_CUSTOMER"
+    STEP_UP_AUTH = "STEP_UP_AUTH"
+    BLOCK_CARD = "BLOCK_CARD"
+    BLOCK_ALL_CARDS = "BLOCK_ALL_CARDS"
+    GENERATE_REPORT = "GENERATE_REPORT"
+    CREATE_CASE = "CREATE_CASE"
+    FILE_REPORT = "FILE_REPORT"
+    ESCALATE_TO_ANALYST = "ESCALATE_TO_ANALYST"
+    CLOSE_NO_FRAUD = "CLOSE_NO_FRAUD"
+
+class ApprovalRoute(str, enum.Enum):
+    AUTO = "auto"
+    L1 = "L1"
+    L2 = "L2"
+
 class CustomerReplyOutcome(str, enum.Enum):
     CONFIRMED_LEGITIMATE = "CONFIRMED_LEGITIMATE"
     DENIED_UNAUTHORIZED = "DENIED_UNAUTHORIZED"
@@ -9,6 +52,13 @@ class CustomerReplyOutcome(str, enum.Enum):
     STEP_UP_FAILED = "STEP_UP_FAILED"
     STEP_UP_PASSED = "STEP_UP_PASSED"
     NO_REQUEST = "NO_REQUEST"
+
+class EvidenceSource(str, enum.Enum):
+    GRAPH = "graph"
+    DOCUMENT = "document"
+    CUSTOMER = "customer"
+    EXTERNAL = "external"
+    SIMULATOR = "simulator"
 
 def get_action_route(action: str, exposure_usd: float = 0.0) -> str:
     """
@@ -19,21 +69,29 @@ def get_action_route(action: str, exposure_usd: float = 0.0) -> str:
     - L1:   DECLINE_TRANSACTION; BLOCK_CARD when exposure <= $2,500
     - L2:   BLOCK_CARD when exposure > $2,500; BLOCK_ALL_CARDS always; FILE_REPORT always
     """
-    if action in [
-        "ALLOW_TRANSACTION", "MONITOR_CARD", "MONITOR_CONNECTED_CARDS",
-        "WARN_CUSTOMER", "VERIFY_WITH_CUSTOMER", "STEP_UP_AUTH",
-        "GENERATE_REPORT", "CREATE_CASE", "ESCALATE_TO_ANALYST", "CLOSE_NO_FRAUD"
+    action_str = str(action)
+    if action_str in [
+        ActionType.ALLOW_TRANSACTION.value,
+        ActionType.MONITOR_CARD.value,
+        ActionType.MONITOR_CONNECTED_CARDS.value,
+        ActionType.WARN_CUSTOMER.value,
+        ActionType.VERIFY_WITH_CUSTOMER.value,
+        ActionType.STEP_UP_AUTH.value,
+        ActionType.GENERATE_REPORT.value,
+        ActionType.CREATE_CASE.value,
+        ActionType.ESCALATE_TO_ANALYST.value,
+        ActionType.CLOSE_NO_FRAUD.value,
     ]:
-        return "auto"
-    elif action == "DECLINE_TRANSACTION":
-        return "L1"
-    elif action == "BLOCK_CARD":
+        return ApprovalRoute.AUTO.value
+    elif action_str == ActionType.DECLINE_TRANSACTION.value:
+        return ApprovalRoute.L1.value
+    elif action_str == ActionType.BLOCK_CARD.value:
         if exposure_usd > 2500.0:
-            return "L2"
-        return "L1"
-    elif action in ["BLOCK_ALL_CARDS", "FILE_REPORT"]:
-        return "L2"
-    return "auto"
+            return ApprovalRoute.L2.value
+        return ApprovalRoute.L1.value
+    elif action_str in [ActionType.BLOCK_ALL_CARDS.value, ActionType.FILE_REPORT.value]:
+        return ApprovalRoute.L2.value
+    return ApprovalRoute.AUTO.value
 
 def evaluate_policy_rules(
     stage: str,  # "initial" or "final"
@@ -41,7 +99,7 @@ def evaluate_policy_rules(
     fraud_prob: float,
     pattern: str,
     exposure_usd: float,
-    connected_cards: List[str],
+    connected_cards: Optional[List[str]] = None,
     has_shared_device_ring: bool = False,
     is_card_testing: bool = False,
     testing_cleared_gt_100: bool = False,
@@ -51,190 +109,202 @@ def evaluate_policy_rules(
 ) -> Tuple[List[Dict[str, str]], bool, str]:
     """
     Evaluates bank policy rules R1-R10 to produce exact actions, approval routes, and SAR decisions.
+    
+    Returns:
+        (actions, sar_file, sar_reason)
     """
-    actions = []
+    connected_cards = connected_cards or []
+    actions: List[Dict[str, str]] = []
     sar_file = False
     sar_reason = ""
 
     if stage == "initial":
         # Initial recommendation (before evidence request reply)
-        if verdict == "legitimate" or (fraud_prob <= 0.15 and customer_outcome == CustomerReplyOutcome.NO_REQUEST):
+        if is_recurring_dispute:
             actions.append({
-                "action": "ALLOW_TRANSACTION",
-                "route": "auto",
-                "reason": "Policy Section 1: Transaction conforms to historical spending baseline"
-            })
-            actions.append({
-                "action": "CLOSE_NO_FRAUD",
-                "route": "auto",
-                "reason": "Policy Section 1: Alert evaluated as legitimate cardholder activity"
-            })
-        elif is_recurring_dispute:
-            actions.append({
-                "action": "CREATE_CASE",
-                "route": "auto",
+                "action": ActionType.CREATE_CASE.value,
+                "route": ApprovalRoute.AUTO.value,
                 "reason": "R7: Recurring subscription dispute investigation"
             })
             actions.append({
-                "action": "VERIFY_WITH_CUSTOMER",
-                "route": "auto",
+                "action": ActionType.VERIFY_WITH_CUSTOMER.value,
+                "route": ApprovalRoute.AUTO.value,
                 "reason": "R7: Verify recurring transaction terms with customer before blocking"
             })
             actions.append({
-                "action": "WARN_CUSTOMER",
-                "route": "auto",
+                "action": ActionType.WARN_CUSTOMER.value,
+                "route": ApprovalRoute.AUTO.value,
                 "reason": "R7: Send recurring charge notice to customer"
             })
-        elif is_card_testing:
+        elif verdict == CaseVerdict.LEGITIMATE.value or (fraud_prob <= 0.15 and customer_outcome == CustomerReplyOutcome.NO_REQUEST):
             actions.append({
-                "action": "DECLINE_TRANSACTION",
-                "route": "L1",
+                "action": ActionType.ALLOW_TRANSACTION.value,
+                "route": ApprovalRoute.AUTO.value,
+                "reason": "Policy Section 1: Transaction conforms to historical spending baseline"
+            })
+            actions.append({
+                "action": ActionType.CLOSE_NO_FRAUD.value,
+                "route": ApprovalRoute.AUTO.value,
+                "reason": "Policy Section 1: Alert evaluated as legitimate cardholder activity"
+            })
+        elif is_card_testing or pattern == FraudPattern.CARD_TESTING.value:
+            actions.append({
+                "action": ActionType.DECLINE_TRANSACTION.value,
+                "route": ApprovalRoute.L1.value,
                 "reason": "R5: Micro-authorization testing sequence observed; decline pending authorizations"
             })
             if testing_cleared_gt_100:
                 actions.append({
-                    "action": "BLOCK_CARD",
-                    "route": get_action_route("BLOCK_CARD", exposure_usd),
+                    "action": ActionType.BLOCK_CARD.value,
+                    "route": get_action_route(ActionType.BLOCK_CARD.value, exposure_usd),
                     "reason": "R5: Testing sequence observed and purchase over $100 has already cleared"
                 })
             else:
                 actions.append({
-                    "action": "STEP_UP_AUTH",
-                    "route": "auto",
+                    "action": ActionType.STEP_UP_AUTH.value,
+                    "route": ApprovalRoute.AUTO.value,
                     "reason": "R5: Require step-up multi-factor authentication following card testing activity"
                 })
         elif fraud_prob < 0.70:
             # Rule R1: Verify before you block on a weak signal
             actions.append({
-                "action": "VERIFY_WITH_CUSTOMER",
-                "route": "auto",
+                "action": ActionType.VERIFY_WITH_CUSTOMER.value,
+                "route": ApprovalRoute.AUTO.value,
                 "reason": f"R1: Assessed fraud probability {fraud_prob:.2f} is below 0.70 on initial alert; verify before blocking to prevent policy breach"
             })
             if exposure_usd > 500.0:
                 actions.append({
-                    "action": "MONITOR_CARD",
-                    "route": "auto",
+                    "action": ActionType.MONITOR_CARD.value,
+                    "route": ApprovalRoute.AUTO.value,
                     "reason": "Policy Section 1: Elevate card monitoring sensitivity for 72 hours pending reply"
                 })
         else:
-            # High probability initial signal
+            # High probability initial signal (>= 0.70)
             actions.append({
-                "action": "DECLINE_TRANSACTION",
-                "route": "L1",
+                "action": ActionType.DECLINE_TRANSACTION.value,
+                "route": ApprovalRoute.L1.value,
                 "reason": "Policy Section 1: Decline authorization on high risk alert"
             })
             actions.append({
-                "action": "VERIFY_WITH_CUSTOMER",
-                "route": "auto",
+                "action": ActionType.VERIFY_WITH_CUSTOMER.value,
+                "route": ApprovalRoute.AUTO.value,
                 "reason": "R1: Verify with customer to confirm unauthorized compromise"
             })
 
     elif stage == "final":
         # Final recommendation after evidence request response
-        if customer_outcome == CustomerReplyOutcome.CONFIRMED_LEGITIMATE or verdict == "legitimate":
+        if is_recurring_dispute:
             actions.append({
-                "action": "ALLOW_TRANSACTION",
-                "route": "auto",
+                "action": ActionType.CREATE_CASE.value,
+                "route": ApprovalRoute.AUTO.value,
+                "reason": "R7: Record recurring billing dispute in internal graph case"
+            })
+            actions.append({
+                "action": ActionType.WARN_CUSTOMER.value,
+                "route": ApprovalRoute.AUTO.value,
+                "reason": "R7: Customer reminded of recurring merchant billing terms"
+            })
+            actions.append({
+                "action": ActionType.CLOSE_NO_FRAUD.value,
+                "route": ApprovalRoute.AUTO.value,
+                "reason": "R7: Activity matches monthly recurring schedule; closed without card block"
+            })
+            sar_file = False
+            sar_reason = "Recurring subscription billing dispute resolved without fraud indicator"
+
+        elif customer_outcome == CustomerReplyOutcome.CONFIRMED_LEGITIMATE or verdict == CaseVerdict.LEGITIMATE.value:
+            actions.append({
+                "action": ActionType.ALLOW_TRANSACTION.value,
+                "route": ApprovalRoute.AUTO.value,
                 "reason": "R3: Customer confirmed the transaction as authorized"
             })
             actions.append({
-                "action": "CLOSE_NO_FRAUD",
-                "route": "auto",
+                "action": ActionType.CLOSE_NO_FRAUD.value,
+                "route": ApprovalRoute.AUTO.value,
                 "reason": "R3: Alert closed as legitimate following cardholder confirmation"
             })
             sar_file = False
             sar_reason = "Transaction confirmed legitimate by cardholder; no suspicious activity report filed"
 
-        elif is_recurring_dispute:
-            actions.append({
-                "action": "CREATE_CASE",
-                "route": "auto",
-                "reason": "R7: Record recurring billing dispute in internal graph case"
-            })
-            actions.append({
-                "action": "WARN_CUSTOMER",
-                "route": "auto",
-                "reason": "R7: Customer reminded of recurring merchant billing terms"
-            })
-            actions.append({
-                "action": "CLOSE_NO_FRAUD",
-                "route": "auto",
-                "reason": "R7: Activity matches monthly recurring schedule; closed without card block"
-            })
-            sar_file = False
-
         elif customer_outcome == CustomerReplyOutcome.NO_REPLY_24H:
             # Rule R4: No reply within 24 hours
             actions.append({
-                "action": "MONITOR_CARD",
-                "route": "auto",
+                "action": ActionType.MONITOR_CARD.value,
+                "route": ApprovalRoute.AUTO.value,
                 "reason": "R4: Cardholder unreachable within 24 hours; elevate card monitoring"
             })
             actions.append({
-                "action": "DECLINE_TRANSACTION",
-                "route": "L1",
+                "action": ActionType.DECLINE_TRANSACTION.value,
+                "route": ApprovalRoute.L1.value,
                 "reason": "R4: Decline pending authorizations pending contact"
             })
             if exposure_usd > 500.0:
                 actions.append({
-                    "action": "ESCALATE_TO_ANALYST",
-                    "route": "auto",
+                    "action": ActionType.ESCALATE_TO_ANALYST.value,
+                    "route": ApprovalRoute.AUTO.value,
                     "reason": f"R4/R8: No reply within 24h and exposure ${exposure_usd:.2f} exceeds $500 threshold"
                 })
+            sar_file = False
+            sar_reason = "No customer reply received within 24 hours; escalated to analyst for manual review"
 
-        elif verdict == "uncertain":
+        elif verdict == CaseVerdict.UNCERTAIN.value:
             # Rule R8: Escalate when uncertain and exposed
             actions.append({
-                "action": "CREATE_CASE",
-                "route": "auto",
+                "action": ActionType.CREATE_CASE.value,
+                "route": ApprovalRoute.AUTO.value,
                 "reason": "Section 3a: Open internal fraud case to record ongoing investigation"
             })
             actions.append({
-                "action": "MONITOR_CARD",
-                "route": "auto",
+                "action": ActionType.MONITOR_CARD.value,
+                "route": ApprovalRoute.AUTO.value,
                 "reason": "Policy Section 1: Place card under 72h elevated monitoring"
             })
             if exposure_usd > 500.0:
                 actions.append({
-                    "action": "ESCALATE_TO_ANALYST",
-                    "route": "auto",
+                    "action": ActionType.ESCALATE_TO_ANALYST.value,
+                    "route": ApprovalRoute.AUTO.value,
                     "reason": f"R8: Verdict is uncertain and exposure ${exposure_usd:.2f} exceeds $500 threshold"
                 })
+            sar_file = False
+            sar_reason = f"Investigation verdict uncertain with exposure ${exposure_usd:.2f}; referred for analyst evaluation"
 
-        elif verdict == "fraud" or customer_outcome in [CustomerReplyOutcome.DENIED_UNAUTHORIZED, CustomerReplyOutcome.STEP_UP_FAILED]:
+        elif verdict == CaseVerdict.FRAUD.value or customer_outcome in [
+            CustomerReplyOutcome.DENIED_UNAUTHORIZED,
+            CustomerReplyOutcome.STEP_UP_FAILED
+        ]:
             # Rule R2: Customer denies the transaction
-            block_route = get_action_route("BLOCK_CARD", exposure_usd)
+            block_route = get_action_route(ActionType.BLOCK_CARD.value, exposure_usd)
             actions.append({
-                "action": "BLOCK_CARD",
+                "action": ActionType.BLOCK_CARD.value,
                 "route": block_route,
                 "reason": f"R2: Confirmed unauthorized fraud; exposure ${exposure_usd:.2f} ({'exceeds $2,500 threshold (L2)' if exposure_usd > 2500 else 'is under $2,500 threshold (L1)'})"
             })
             actions.append({
-                "action": "CREATE_CASE",
-                "route": "auto",
+                "action": ActionType.CREATE_CASE.value,
+                "route": ApprovalRoute.AUTO.value,
                 "reason": "R2 and Section 3a: Open internal fraud case and persist evidence to graph"
             })
 
             # Check Rule R10: Block all cards if multi-card compromised
             if multi_card_compromised:
                 actions.append({
-                    "action": "BLOCK_ALL_CARDS",
-                    "route": "L2",
+                    "action": ActionType.BLOCK_ALL_CARDS.value,
+                    "route": ApprovalRoute.L2.value,
                     "reason": "R10: Multiple cards belonging to customer show confirmed compromise"
                 })
 
             # Check SAR trigger rules (R2, R6, R9, Section 3a)
             # SAR is mandatory when: exposure > $1,000 OR shared origin (R6) OR undocumented pattern (R9)
-            if exposure_usd > 1000.0 or has_shared_device_ring or len(connected_cards) > 0 or pattern == "undocumented":
+            if exposure_usd > 1000.0 or has_shared_device_ring or len(connected_cards) > 0 or pattern == FraudPattern.UNDOCUMENTED.value:
                 sar_file = True
                 actions.append({
-                    "action": "FILE_REPORT",
-                    "route": "L2",
-                    "reason": f"R2/R6/Section 3a: Mandatory SAR filing ({'Shared origin cluster detected' if (has_shared_device_ring or connected_cards) else ('Undocumented coordinated pattern' if pattern == 'undocumented' else f'Exposure ${exposure_usd:.2f} > $1,000')})"
+                    "action": ActionType.FILE_REPORT.value,
+                    "route": ApprovalRoute.L2.value,
+                    "reason": f"R2/R6/Section 3a: Mandatory SAR filing ({'Shared origin cluster detected' if (has_shared_device_ring or connected_cards) else ('Undocumented coordinated pattern' if pattern == FraudPattern.UNDOCUMENTED.value else f'Exposure ${exposure_usd:.2f} > $1,000')})"
                 })
                 if has_shared_device_ring or len(connected_cards) > 0:
                     sar_reason = f"R6 and Section 3a: Confirmed fraud linked to shared origin infrastructure across {len(connected_cards) + 1} cards with total exposure ${exposure_usd:.2f}"
-                elif pattern == "undocumented":
+                elif pattern == FraudPattern.UNDOCUMENTED.value:
                     sar_reason = f"R9 and Section 3a: Undocumented coordinated fraud pattern with exposure ${exposure_usd:.2f}"
                 else:
                     sar_reason = f"R2 and Section 3a: Confirmed unauthorized fraud with total exposure ${exposure_usd:.2f} exceeding $1,000 threshold"
@@ -245,16 +315,16 @@ def evaluate_policy_rules(
             # Rule R6: Monitor connected cards sharing device/region/email
             if connected_cards:
                 actions.append({
-                    "action": "MONITOR_CONNECTED_CARDS",
-                    "route": "auto",
+                    "action": ActionType.MONITOR_CONNECTED_CARDS.value,
+                    "route": ApprovalRoute.AUTO.value,
                     "reason": f"R6: Place {len(connected_cards)} connected card(s) sharing compromised device/ring infrastructure under monitoring"
                 })
 
             # Rule R9: Escalate undocumented pattern
-            if pattern == "undocumented":
+            if pattern == FraudPattern.UNDOCUMENTED.value:
                 actions.append({
-                    "action": "ESCALATE_TO_ANALYST",
-                    "route": "auto",
+                    "action": ActionType.ESCALATE_TO_ANALYST.value,
+                    "route": ApprovalRoute.AUTO.value,
                     "reason": "R9: Undocumented fraud pattern escalated with descriptive analyst report"
                 })
 

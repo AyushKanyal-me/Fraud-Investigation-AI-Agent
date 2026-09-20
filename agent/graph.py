@@ -39,6 +39,7 @@ class InvestigationGraphState(TypedDict, total=False):
     card_id: str
     customer_id: str
     risk_score: float
+    submitted_evidence: Dict[str, Any]
 
     # Operational metrics & explainability trace
     tool_call_count: int
@@ -440,7 +441,48 @@ class FraudInvestigationGraph:
         customer_outcome = CustomerReplyOutcome.NO_REQUEST
         simulated_reply = ""
 
-        if initial_verdict == "legitimate":
+        if state.get("submitted_evidence"):
+            # Real evidence submitted via resume endpoint
+            sub_ev = state["submitted_evidence"]
+            simulated_reply = sub_ev.get("response_text", "")
+            source_tag = sub_ev.get("source", "customer_portal")
+            actor_id = sub_ev.get("actor_id", "customer")
+            req_id = sub_ev.get("request_id", "ext-req-1")
+            
+            # Classify submitted response
+            reply_lower = simulated_reply.lower()
+            if "denied" in reply_lower or "never" in reply_lower or "not authorize" in reply_lower or "unauthorized" in reply_lower:
+                customer_outcome = CustomerReplyOutcome.DENIED_UNAUTHORIZED
+            elif "legitimate" in reply_lower or "authorized" in reply_lower or "confirm" in reply_lower:
+                customer_outcome = CustomerReplyOutcome.CONFIRMED_LEGITIMATE
+            else:
+                customer_outcome = CustomerReplyOutcome.DENIED_UNAUTHORIZED
+
+            inq_type = "customer_validation"
+            evidence_requests.append({
+                "type": inq_type,
+                "asked_after_step": tool_count,
+                "assumed_response": simulated_reply,
+                "provenance": {
+                    "source": source_tag,
+                    "request_id": req_id,
+                    "actor_id": actor_id
+                }
+            })
+
+            evidence_claims.append({
+                "claim": f"Cardholder response received via {source_tag}: '{simulated_reply}'",
+                "source": "customer",
+                "ref": f"evidence_request:{req_id}",
+                "entity_ids": [flagged_txn_id]
+            })
+
+            trace.append({
+                "step": "Customer Verification",
+                "thought": f"Processed real external evidence ({source_tag}): outcome={customer_outcome.value}. Response: '{simulated_reply}'."
+            })
+
+        elif initial_verdict == "legitimate":
             # Clear false positive; no intrusive customer inquiry needed
             customer_outcome = CustomerReplyOutcome.NO_REQUEST
             evidence_requests = []
@@ -451,7 +493,7 @@ class FraudInvestigationGraph:
         else:
             # Trigger dynamic simulation tool
             tool_count += 1
-            customer_outcome, inq_type, simulated_reply = self.simulator.simulate_inquiry(
+            customer_outcome, inq_type, simulated_reply, provenance = self.simulator.simulate_inquiry(
                 customer_id=customer_id,
                 card_id=card_id,
                 flagged_txn_id=flagged_txn_id,
@@ -469,7 +511,8 @@ class FraudInvestigationGraph:
             evidence_requests.append({
                 "type": inq_type,
                 "asked_after_step": tool_count,
-                "assumed_response": simulated_reply
+                "assumed_response": simulated_reply,
+                "provenance": provenance
             })
 
             if customer_outcome == CustomerReplyOutcome.DENIED_UNAUTHORIZED:
@@ -885,7 +928,7 @@ class FraudInvestigationGraph:
 
         return workflow.compile()
 
-    def run(self, case_row: Dict[str, Any]) -> Dict[str, Any]:
+    def run(self, case_row: Dict[str, Any], submitted_evidence: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Runs the compiled LangGraph workflow for a single case."""
         start_time = time.time()
         
@@ -905,6 +948,9 @@ class FraudInvestigationGraph:
             "tokens_consumed": 0,
             "explainability_trace": []
         }
+
+        if submitted_evidence:
+            initial_state["submitted_evidence"] = submitted_evidence
 
         final_state = self.graph.invoke(initial_state)
         latency_s = round(time.time() - start_time, 2)

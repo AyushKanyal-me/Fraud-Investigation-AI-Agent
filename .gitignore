@@ -13,6 +13,7 @@ __pycache__/
 *$py.class
 *.so
 .pytest_cache/
+*.pkl
 
 # OS Specific
 .DS_Store
@@ -23,10 +24,15 @@ __pycache__/
 ehthumbs.db
 Thumbs.db
 
-# Large Datasets (>50MB, exceeds GitHub limit)
+# Large Datasets (>50MB)
+Dataset/transactions.csv
+Dataset/identity.csv
 Datatset/transactions.csv
 Datatset/identity.csv
 
-# Logs & Temporary Files
-*.log
+# Working Memory & Persistence
+checkpoints/*.json
+logs/*.jsonl
+rag/chroma_db/
 *.tmp
+*.log

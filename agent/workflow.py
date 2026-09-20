@@ -32,14 +32,14 @@ class FraudInvestigationWorkflow:
             memory=self.memory
         )
 
-    def run_investigation(self, case_row: Dict[str, Any]) -> Dict[str, Any]:
+    def run_investigation(self, case_row: Dict[str, Any], submitted_evidence: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Executes complete end-to-end investigation via LangGraph StateGraph:
         - Multi-hop Graph Traversal (TigerGraph)
         - GraphRAG Policy & Precedent Retrieval (ChromaDB)
-        - Dynamic Cardholder Simulation & Step-Up Authentication
+        - Dynamic Cardholder Simulation & Step-Up Authentication / External Evidence
         - Calibrated Risk Scoring & Bank Policy Action Routing (R1-R10)
         - FinCEN SAR 5 Ws and H Narrative Synthesis
         - Live TigerGraph Graph Persistence & Cross-Case Working Memory Update
         """
-        return self.agent_graph.run(case_row)
+        return self.agent_graph.run(case_row, submitted_evidence=submitted_evidence)

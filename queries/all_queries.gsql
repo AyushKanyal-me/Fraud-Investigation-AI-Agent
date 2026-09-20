@@ -1,0 +1,144 @@
+USE GRAPH FraudGraph
+CREATE QUERY card_history(VERTEX<Card> c) FOR GRAPH FraudGraph {
+    /* Returns all transactions for a card ordered by timestamp */
+    CardSet = {c};
+    Txns = SELECT t FROM CardSet:s -(PERFORMED_BY)- Transaction:t
+           ORDER BY t.ts ASC;
+    PRINT Txns;
+}
+
+CREATE QUERY card_window(VERTEX<Card> c, INT center_ts, INT window_sec) FOR GRAPH FraudGraph {
+    /* Returns transactions for a card within [center_ts - window_sec, center_ts + window_sec] */
+    CardSet = {c};
+    Txns = SELECT t FROM CardSet:s -(PERFORMED_BY)- Transaction:t
+           WHERE t.ts >= center_ts - window_sec AND t.ts <= center_ts + window_sec
+           ORDER BY t.ts ASC;
+    PRINT Txns;
+}
+
+CREATE QUERY customer_profile(VERTEX<Customer> cust) FOR GRAPH FraudGraph {
+    /* Returns all cards, past cases, and transaction summary for a customer */
+    CustSet = {cust};
+    Cards = SELECT c FROM CustSet:s -(OWNED_BY)- Card:c;
+    Txns = SELECT t FROM Cards:c -(PERFORMED_BY)- Transaction:t;
+    PastCases = SELECT cs FROM CustSet:s -(INVOLVES_CUSTOMER)- FraudCase:cs;
+    
+    PRINT CustSet, Cards, PastCases, Txns.size() AS total_txns;
+}
+
+CREATE QUERY device_neighbors(VERTEX<Device> dev) FOR GRAPH FraudGraph {
+    /* Returns all transactions and cards that used this device */
+    DevSet = {dev};
+    Txns = SELECT t FROM DevSet:d -(USED_DEVICE)- Transaction:t;
+    Cards = SELECT c FROM Txns:t -(PERFORMED_BY)- Card:c;
+    Customers = SELECT cust FROM Cards:c -(OWNED_BY)- Customer:cust;
+    
+    PRINT DevSet, Txns, Cards, Customers;
+}
+
+CREATE QUERY region_anomaly(VERTEX<Card> c, INT current_addr1, INT current_addr2) FOR GRAPH FraudGraph {
+    /* Compares transaction location with historical primary address for this card */
+    CardSet = {c};
+    Txns = SELECT t FROM CardSet:s -(PERFORMED_BY)- Transaction:t;
+    
+    PRINT CardSet, Txns;
+}
+
+CREATE QUERY similar_closed_cases(VERTEX<Card> c, VERTEX<Customer> cust) FOR GRAPH FraudGraph {
+    /* Finds closed cases connected directly or via customer to the card under investigation */
+    CardSet = {c};
+    CustSet = {cust};
+    
+    DirectCases = SELECT cs FROM CardSet:s -(INVOLVES_CARD)- FraudCase:cs;
+    CustCases = SELECT cs FROM CustSet:s -(INVOLVES_CUSTOMER)- FraudCase:cs;
+    
+    PRINT DirectCases, CustCases;
+}
+
+CREATE QUERY email_ring(VERTEX<EmailDomain> e) FOR GRAPH FraudGraph {
+    /* Finds cards and transactions sharing an email domain */
+    EmailSet = {e};
+    Txns = SELECT t FROM EmailSet:s -(USED_EMAIL)- Transaction:t LIMIT 100;
+    Cards = SELECT c FROM Txns:t -(PERFORMED_BY)- Card:c;
+    
+    PRINT EmailSet, Txns, Cards;
+}
+
+CREATE QUERY transaction_detail(VERTEX<Transaction> t) FOR GRAPH FraudGraph {
+    /* Returns full details of a transaction and its immediate graph neighbors */
+    TxnSet = {t};
+    Cards = SELECT c FROM TxnSet:s -(PERFORMED_BY)- Card:c;
+    Devices = SELECT d FROM TxnSet:s -(USED_DEVICE)- Device:d;
+    Emails = SELECT e FROM TxnSet:s -(USED_EMAIL)- EmailDomain:e;
+    Addrs = SELECT a FROM TxnSet:s -(LOCATED_AT)- Address:a;
+    
+    PRINT TxnSet, Cards, Devices, Emails, Addrs;
+}
+
+CREATE QUERY card_testing_detection(VERTEX<Card> c, INT center_ts) FOR GRAPH FraudGraph {
+    /* Checks for card testing pattern: >=3 small txns (< $15) within 600s */
+    CardSet = {c};
+    SmallTxns = SELECT t FROM CardSet:s -(PERFORMED_BY)- Transaction:t
+                WHERE t.ts >= center_ts - 600 AND t.ts <= center_ts + 600 AND t.amount < 15.0;
+    AllWindowTxns = SELECT t FROM CardSet:s -(PERFORMED_BY)- Transaction:t
+                    WHERE t.ts >= center_ts - 600 AND t.ts <= center_ts + 600;
+                    
+    PRINT SmallTxns.size() AS small_txn_count, SmallTxns, AllWindowTxns;
+}
+
+CREATE QUERY write_case(
+    STRING case_id,
+    STRING opened_at,
+    STRING closed_at,
+    STRING outcome,
+    STRING pattern,
+    DOUBLE fraud_probability,
+    DOUBLE exposure_usd,
+    STRING actions_taken,
+    BOOL sar_filed,
+    STRING analyst_notes,
+    STRING trigger_type,
+    STRING trigger_text,
+    STRING first_fraud_txn_id,
+    VERTEX<Card> c,
+    VERTEX<Customer> cust
+) FOR GRAPH FraudGraph {
+    /* Inserts or updates FraudCase vertex and links to Card and Customer */
+    INSERT INTO FraudCase (
+        PRIMARY_ID,
+        opened_at,
+        closed_at,
+        outcome,
+        pattern,
+        fraud_probability,
+        exposure_usd,
+        actions_taken,
+        sar_filed,
+        analyst_notes,
+        trigger_type,
+        trigger_text,
+        first_fraud_txn_id
+    ) VALUES (
+        case_id,
+        opened_at,
+        closed_at,
+        outcome,
+        pattern,
+        fraud_probability,
+        exposure_usd,
+        actions_taken,
+        sar_filed,
+        analyst_notes,
+        trigger_type,
+        trigger_text,
+        first_fraud_txn_id
+    );
+
+    INSERT INTO INVOLVES_CARD (FROM, TO) VALUES (case_id FraudCase, c);
+    INSERT INTO INVOLVES_CUSTOMER (FROM, TO) VALUES (case_id FraudCase, cust);
+
+    PRINT "Case written successfully" AS status;
+}
+
+
+INSTALL QUERY ALL
