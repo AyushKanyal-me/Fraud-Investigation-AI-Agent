@@ -1,0 +1,10 @@
+CREATE QUERY transaction_detail(VERTEX<Transaction> t) FOR GRAPH FraudGraph {
+    /* Returns full details of a transaction and its immediate graph neighbors */
+    TxnSet = {t};
+    Cards = SELECT c FROM TxnSet:s -(PERFORMED_BY)- Card:c;
+    Devices = SELECT d FROM TxnSet:s -(USED_DEVICE)- Device:d;
+    Emails = SELECT e FROM TxnSet:s -(USED_EMAIL)- EmailDomain:e;
+    Addrs = SELECT a FROM TxnSet:s -(LOCATED_AT)- Address:a;
+    
+    PRINT TxnSet, Cards, Devices, Emails, Addrs;
+}

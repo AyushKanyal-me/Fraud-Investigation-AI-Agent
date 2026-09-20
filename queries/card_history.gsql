@@ -1,0 +1,7 @@
+CREATE QUERY card_history(VERTEX<Card> c) FOR GRAPH FraudGraph {
+    /* Returns all transactions for a card ordered by timestamp */
+    CardSet = {c};
+    Txns = SELECT t FROM CardSet:s -(PERFORMED_BY)- Transaction:t
+           ORDER BY t.ts ASC;
+    PRINT Txns;
+}

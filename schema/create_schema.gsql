@@ -1,0 +1,107 @@
+# TigerGraph Schema Definition for FraudGraph
+
+CREATE VERTEX Transaction(
+    PRIMARY_ID id STRING,
+    amount DOUBLE,
+    ts INT,
+    channel STRING,
+    risk_score DOUBLE,
+    ProductCD STRING,
+    card1 INT,
+    card2 INT,
+    card3 INT,
+    card4 STRING,
+    card5 INT,
+    card6 STRING,
+    addr1 INT,
+    addr2 INT,
+    dist1 DOUBLE,
+    dist2 DOUBLE,
+    P_emaildomain STRING,
+    R_emaildomain STRING,
+    DeviceType STRING,
+    DeviceInfo STRING,
+    customer_id STRING
+)
+
+CREATE VERTEX Card(
+    PRIMARY_ID id STRING,
+    card1 INT,
+    card2 INT,
+    card3 INT,
+    card4 STRING,
+    card5 INT,
+    card6 STRING,
+    total_txns INT,
+    total_amt DOUBLE,
+    avg_amt DOUBLE,
+    primary_addr1 INT,
+    primary_addr2 INT
+)
+
+CREATE VERTEX Customer(
+    PRIMARY_ID id STRING,
+    primary_email STRING,
+    primary_device STRING,
+    total_cases INT,
+    risk_profile STRING
+)
+
+CREATE VERTEX Device(
+    PRIMARY_ID id STRING,
+    device_type STRING,
+    device_info STRING,
+    first_seen INT,
+    last_seen INT
+)
+
+CREATE VERTEX EmailDomain(
+    PRIMARY_ID id STRING,
+    domain STRING,
+    is_disposable BOOL
+)
+
+CREATE VERTEX Address(
+    PRIMARY_ID id STRING,
+    addr1 INT,
+    addr2 INT
+)
+
+CREATE VERTEX FraudCase(
+    PRIMARY_ID id STRING,
+    opened_at STRING,
+    closed_at STRING,
+    outcome STRING,
+    pattern STRING,
+    fraud_probability DOUBLE,
+    exposure_usd DOUBLE,
+    actions_taken STRING,
+    sar_filed BOOL,
+    analyst_notes STRING,
+    trigger_type STRING,
+    trigger_text STRING,
+    first_fraud_txn_id STRING
+)
+
+CREATE VERTEX EvidenceItem(
+    PRIMARY_ID id STRING,
+    case_id STRING,
+    evidence_type STRING,
+    description STRING,
+    source STRING,
+    timestamp STRING
+)
+
+CREATE UNDIRECTED EDGE PERFORMED_BY(FROM Transaction, TO Card)
+CREATE UNDIRECTED EDGE OWNED_BY(FROM Card, TO Customer)
+CREATE UNDIRECTED EDGE USED_DEVICE(FROM Transaction, TO Device)
+CREATE UNDIRECTED EDGE USED_EMAIL(FROM Transaction, TO EmailDomain)
+CREATE UNDIRECTED EDGE LOCATED_AT(FROM Transaction, TO Address)
+CREATE DIRECTED EDGE NEXT_TXN(FROM Transaction, TO Transaction, time_delta_sec INT)
+CREATE UNDIRECTED EDGE INVOLVES_TXN(FROM FraudCase, TO Transaction)
+CREATE UNDIRECTED EDGE INVOLVES_CARD(FROM FraudCase, TO Card)
+CREATE UNDIRECTED EDGE INVOLVES_CUSTOMER(FROM FraudCase, TO Customer)
+CREATE DIRECTED EDGE HAS_EVIDENCE(FROM FraudCase, TO EvidenceItem)
+CREATE UNDIRECTED EDGE SIMILAR_TO(FROM FraudCase, TO FraudCase, similarity_score DOUBLE, shared_features STRING)
+
+CREATE GRAPH FraudGraph(Transaction, Card, Customer, Device, EmailDomain, Address, FraudCase, EvidenceItem, PERFORMED_BY, OWNED_BY, USED_DEVICE, USED_EMAIL, LOCATED_AT, NEXT_TXN, INVOLVES_TXN, INVOLVES_CARD, INVOLVES_CUSTOMER, HAS_EVIDENCE, SIMILAR_TO)

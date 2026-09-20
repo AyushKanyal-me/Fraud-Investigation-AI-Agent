@@ -1,0 +1,130 @@
+{
+  "case_id": "HHG-018",
+  "case": {
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.05,
+    "pattern": "none",
+    "pattern_description": "",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 0.0,
+    "evidence": [
+      {
+        "claim": "Transaction location (region 126.0) differs from cardholder 30-day home region 325.0",
+        "source": "graph",
+        "ref": "query:region_anomaly",
+        "entity_ids": [
+          "3491361"
+        ]
+      },
+      {
+        "claim": "Disputed amount $39.08 matches customer historical recurring monthly billing pattern",
+        "source": "graph",
+        "ref": "query:get_time_bounded_card_baseline(card_id=C02354-K2)",
+        "entity_ids": [
+          "3491361"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-0255",
+      "CC-0405",
+      "CC-0454"
+    ],
+    "summary": "Investigation of alert on transaction 3491361 ($39.08) on card C02354-K2 concluded with a verdict of legitimate cardholder activity (fraud probability: 0.05). Activity conforms to historical account behavior and customer validation confirmed authorization. Alert closed with no adverse action.",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-HHG-018"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 7,
+      "assumed_response": "Cardholder clarifies they recognize the recurring subscription charge of $39.08 after checking their billing agreement."
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R7: Recurring subscription dispute investigation"
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R7: Verify recurring transaction terms with customer before blocking"
+      },
+      {
+        "action": "WARN_CUSTOMER",
+        "route": "auto",
+        "reason": "R7: Send recurring charge notice to customer"
+      }
+    ],
+    "final": [
+      {
+        "action": "ALLOW_TRANSACTION",
+        "route": "auto",
+        "reason": "R3: Customer confirmed the transaction as authorized"
+      },
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R3: Alert closed as legitimate following cardholder confirmation"
+      }
+    ],
+    "what_changed": "Investigation confirmed recurring subscription billing match under Rule R7; cardholder reminded and case closed."
+  },
+  "sar": {
+    "file": false,
+    "reason": "Transaction confirmed legitimate by cardholder; no suspicious activity report filed",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "Recurring monthly billing established; closed without card block under Rule R7/R3.",
+  "tool_calls": 8,
+  "tokens": 0,
+  "latency_s": 0.27,
+  "explainability_trace": [
+    {
+      "step": "Initialize Case",
+      "thought": "Initiating investigation for case HHG-018. Trigger: customer_report ('Customer C02354 message: 'I never made this $39.08 purchase. Please check my card.' Refers to 3491361.'). Flagged Txn: 3491361."
+    },
+    {
+      "step": "Gather Evidence",
+      "thought": "Retrieved graph data for 3491361. Baseline avg: $146.69. Episode txns: 1 ($39.08). Connected cards: 0."
+    },
+    {
+      "step": "Initial Assessment",
+      "thought": "Evaluated initial signals: verdict=uncertain, prob=0.25, pattern=none. Recommended initial actions: ['CREATE_CASE', 'VERIFY_WITH_CUSTOMER', 'WARN_CUSTOMER']."
+    },
+    {
+      "step": "Customer Verification",
+      "thought": "Simulated customer_validation: outcome=RECURRING_DISPUTE. Response: 'Cardholder clarifies they recognize the recurring subscription charge of $39.08 after checking their billing agreement.'."
+    },
+    {
+      "step": "GraphRAG Policy Retrieval",
+      "thought": "Retrieved 3 policy and precedent documents for query 'policy actions for none fraud with unauthorized card'."
+    },
+    {
+      "step": "Final Assessment",
+      "thought": "Final resolution: verdict=legitimate, prob=0.05, pattern=none, exposure=$0.00. Stop reason: Recurring monthly billing established; closed without card block under Rule R7/R3."
+    },
+    {
+      "step": "Policy Rules Evaluation",
+      "thought": "Computed final actions: ['ALLOW_TRANSACTION', 'CLOSE_NO_FRAUD']. SAR Required: False (Transaction confirmed legitimate by cardholder; no suspicious activity report filed)."
+    },
+    {
+      "step": "SAR Generation",
+      "thought": "SAR filing not triggered under bank policy thresholds."
+    },
+    {
+      "step": "Persist & Memory",
+      "thought": "Persisted case HHG-018 to TigerGraph (success=True). Case memory updated."
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+CREATE QUERY email_ring(VERTEX<EmailDomain> e) FOR GRAPH FraudGraph {
+    /* Finds cards and transactions sharing an email domain */
+    EmailSet = {e};
+    Txns = SELECT t FROM EmailSet:s -(USED_EMAIL)- Transaction:t LIMIT 100;
+    Cards = SELECT c FROM Txns:t -(PERFORMED_BY)- Card:c;
+    
+    PRINT EmailSet, Txns, Cards;
+}

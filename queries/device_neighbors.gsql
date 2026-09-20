@@ -1,0 +1,9 @@
+CREATE QUERY device_neighbors(VERTEX<Device> dev) FOR GRAPH FraudGraph {
+    /* Returns all transactions and cards that used this device */
+    DevSet = {dev};
+    Txns = SELECT t FROM DevSet:d -(USED_DEVICE)- Transaction:t;
+    Cards = SELECT c FROM Txns:t -(PERFORMED_BY)- Card:c;
+    Customers = SELECT cust FROM Cards:c -(OWNED_BY)- Customer:cust;
+    
+    PRINT DevSet, Txns, Cards, Customers;
+}

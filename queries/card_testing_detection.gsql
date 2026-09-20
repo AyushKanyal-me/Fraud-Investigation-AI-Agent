@@ -1,0 +1,10 @@
+CREATE QUERY card_testing_detection(VERTEX<Card> c, INT center_ts) FOR GRAPH FraudGraph {
+    /* Checks for card testing pattern: >=3 small txns (< $15) within 600s */
+    CardSet = {c};
+    SmallTxns = SELECT t FROM CardSet:s -(PERFORMED_BY)- Transaction:t
+                WHERE t.ts >= center_ts - 600 AND t.ts <= center_ts + 600 AND t.amount < 15.0;
+    AllWindowTxns = SELECT t FROM CardSet:s -(PERFORMED_BY)- Transaction:t
+                    WHERE t.ts >= center_ts - 600 AND t.ts <= center_ts + 600;
+                    
+    PRINT SmallTxns.size() AS small_txn_count, SmallTxns, AllWindowTxns;
+}

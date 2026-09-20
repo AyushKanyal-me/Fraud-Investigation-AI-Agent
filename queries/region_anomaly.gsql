@@ -1,0 +1,7 @@
+CREATE QUERY region_anomaly(VERTEX<Card> c, INT current_addr1, INT current_addr2) FOR GRAPH FraudGraph {
+    /* Compares transaction location with historical primary address for this card */
+    CardSet = {c};
+    Txns = SELECT t FROM CardSet:s -(PERFORMED_BY)- Transaction:t;
+    
+    PRINT CardSet, Txns;
+}

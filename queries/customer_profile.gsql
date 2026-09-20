@@ -1,0 +1,9 @@
+CREATE QUERY customer_profile(VERTEX<Customer> cust) FOR GRAPH FraudGraph {
+    /* Returns all cards, past cases, and transaction summary for a customer */
+    CustSet = {cust};
+    Cards = SELECT c FROM CustSet:s -(OWNED_BY)- Card:c;
+    Txns = SELECT t FROM Cards:c -(PERFORMED_BY)- Transaction:t;
+    PastCases = SELECT cs FROM CustSet:s -(INVOLVES_CUSTOMER)- FraudCase:cs;
+    
+    PRINT CustSet, Cards, PastCases, Txns.size() AS total_txns;
+}

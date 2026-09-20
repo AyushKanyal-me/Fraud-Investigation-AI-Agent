@@ -1,0 +1,53 @@
+CREATE QUERY write_case(
+    STRING case_id,
+    STRING opened_at,
+    STRING closed_at,
+    STRING outcome,
+    STRING pattern,
+    DOUBLE fraud_probability,
+    DOUBLE exposure_usd,
+    STRING actions_taken,
+    BOOL sar_filed,
+    STRING analyst_notes,
+    STRING trigger_type,
+    STRING trigger_text,
+    STRING first_fraud_txn_id,
+    VERTEX<Card> c,
+    VERTEX<Customer> cust
+) FOR GRAPH FraudGraph {
+    /* Inserts or updates FraudCase vertex and links to Card and Customer */
+    INSERT INTO FraudCase (
+        PRIMARY_ID,
+        opened_at,
+        closed_at,
+        outcome,
+        pattern,
+        fraud_probability,
+        exposure_usd,
+        actions_taken,
+        sar_filed,
+        analyst_notes,
+        trigger_type,
+        trigger_text,
+        first_fraud_txn_id
+    ) VALUES (
+        case_id,
+        opened_at,
+        closed_at,
+        outcome,
+        pattern,
+        fraud_probability,
+        exposure_usd,
+        actions_taken,
+        sar_filed,
+        analyst_notes,
+        trigger_type,
+        trigger_text,
+        first_fraud_txn_id
+    );
+
+    INSERT INTO INVOLVES_CARD (FROM, TO) VALUES (case_id FraudCase, c);
+    INSERT INTO INVOLVES_CUSTOMER (FROM, TO) VALUES (case_id FraudCase, cust);
+
+    PRINT "Case written successfully" AS status;
+}

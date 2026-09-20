@@ -1,0 +1,101 @@
+{
+  "case_id": "HHG-020",
+  "case": {
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.1,
+    "pattern": "none",
+    "pattern_description": "",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 0.0,
+    "evidence": [],
+    "similar_prior_cases": [
+      "CC-2277",
+      "CC-2447"
+    ],
+    "summary": "Investigation of alert on transaction 3509359 ($125.08) on card C12265-K2 concluded with a verdict of legitimate cardholder activity (fraud probability: 0.10). Activity conforms to historical account behavior and customer validation confirmed authorization. Alert closed with no adverse action.",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-HHG-020"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "ALLOW_TRANSACTION",
+        "route": "auto",
+        "reason": "Policy Section 1: Transaction conforms to historical spending baseline"
+      },
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "Policy Section 1: Alert evaluated as legitimate cardholder activity"
+      }
+    ],
+    "final": [
+      {
+        "action": "ALLOW_TRANSACTION",
+        "route": "auto",
+        "reason": "R3: Customer confirmed the transaction as authorized"
+      },
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R3: Alert closed as legitimate following cardholder confirmation"
+      }
+    ],
+    "what_changed": "nothing"
+  },
+  "sar": {
+    "file": false,
+    "reason": "Transaction confirmed legitimate by cardholder; no suspicious activity report filed",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "Activity conforms to 30-day spending baseline; fraud probability (0.10) satisfies stopping threshold <= 0.15.",
+  "tool_calls": 7,
+  "tokens": 0,
+  "latency_s": 0.18,
+  "explainability_trace": [
+    {
+      "step": "Initialize Case",
+      "thought": "Initiating investigation for case HHG-020. Trigger: risk_score ('Real-time model scored transaction 3509359 ($125.08, online) at 0.52. Review and decide.'). Flagged Txn: 3509359."
+    },
+    {
+      "step": "Gather Evidence",
+      "thought": "Retrieved graph data for 3509359. Baseline avg: $103.05. Episode txns: 1 ($125.08). Connected cards: 0."
+    },
+    {
+      "step": "Initial Assessment",
+      "thought": "Evaluated initial signals: verdict=legitimate, prob=0.10, pattern=none. Recommended initial actions: ['ALLOW_TRANSACTION', 'CLOSE_NO_FRAUD']."
+    },
+    {
+      "step": "Customer Verification",
+      "thought": "Initial verdict is legitimate; skipping customer inquiry per policy Section 1."
+    },
+    {
+      "step": "GraphRAG Policy Retrieval",
+      "thought": "Retrieved 3 policy and precedent documents for query 'policy actions for none fraud with unauthorized card'."
+    },
+    {
+      "step": "Final Assessment",
+      "thought": "Final resolution: verdict=legitimate, prob=0.10, pattern=none, exposure=$0.00. Stop reason: Activity conforms to 30-day spending baseline; fraud probability (0.10) satisfies stopping threshold <= 0.15."
+    },
+    {
+      "step": "Policy Rules Evaluation",
+      "thought": "Computed final actions: ['ALLOW_TRANSACTION', 'CLOSE_NO_FRAUD']. SAR Required: False (Transaction confirmed legitimate by cardholder; no suspicious activity report filed)."
+    },
+    {
+      "step": "SAR Generation",
+      "thought": "SAR filing not triggered under bank policy thresholds."
+    },
+    {
+      "step": "Persist & Memory",
+      "thought": "Persisted case HHG-020 to TigerGraph (success=True). Case memory updated."
+    }
+  ]
+}

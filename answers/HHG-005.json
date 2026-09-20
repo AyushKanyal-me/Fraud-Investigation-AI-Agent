@@ -1,0 +1,122 @@
+{
+  "case_id": "HHG-005",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.9,
+    "pattern": "card_not_present_fraud",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3523199"
+    ],
+    "first_suspicious_txn_id": "3523199",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 100.07,
+    "evidence": [
+      {
+        "claim": "Transaction initiated from unseen device profile (iOS Device) not present in historical baseline",
+        "source": "graph",
+        "ref": "query:get_time_bounded_card_baseline(card_id=C02923-K1)",
+        "entity_ids": [
+          "3523199"
+        ]
+      },
+      {
+        "claim": "Customer denied transaction 3523199 ($100.07) when contacted",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": [
+          "3523199"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-2400",
+      "CC-2717",
+      "CC-2857"
+    ],
+    "summary": "Investigation of case HHG-005 confirmed unauthorized card_not_present_fraud activity on card C02923-K1 totaling $100.07 USD across 1 transaction(s). Graph traversal identified device profile iOS Device linking 0 connected card(s). Protective card block and case records have been initiated in compliance with Bank Fraud Policy R2/R6.",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-HHG-005"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 7,
+      "assumed_response": "Customer states they received the fraud inquiry SMS and did not authorize the $100.07 purchase on card C02923-K1."
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: Assessed fraud probability 0.45 is below 0.70 on initial alert; verify before blocking to prevent policy breach"
+      }
+    ],
+    "final": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: Confirmed unauthorized fraud; exposure $100.07 (is under $2,500 threshold (L1))"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2 and Section 3a: Open internal fraud case and persist evidence to graph"
+      }
+    ],
+    "what_changed": "Customer denial / step-up failure confirmed unauthorized compromise, raising probability from 0.45 to 0.90 and triggering block under Rule R2."
+  },
+  "sar": {
+    "file": false,
+    "reason": "Confirmed fraud exposure of $100.07 is under $1,000 threshold and no shared ring was identified",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "Definitive evidence of unauthorized activity established; episode exposure computed and protective actions executed.",
+  "tool_calls": 8,
+  "tokens": 0,
+  "latency_s": 0.26,
+  "explainability_trace": [
+    {
+      "step": "Initialize Case",
+      "thought": "Initiating investigation for case HHG-005. Trigger: risk_score ('Real-time model scored transaction 3523199 ($100.07, online) at 0.54. Review and decide.'). Flagged Txn: 3523199."
+    },
+    {
+      "step": "Gather Evidence",
+      "thought": "Retrieved graph data for 3523199. Baseline avg: $123.75. Episode txns: 1 ($100.07). Connected cards: 0."
+    },
+    {
+      "step": "Initial Assessment",
+      "thought": "Evaluated initial signals: verdict=uncertain, prob=0.45, pattern=card_not_present_fraud. Recommended initial actions: ['VERIFY_WITH_CUSTOMER']."
+    },
+    {
+      "step": "Customer Verification",
+      "thought": "Simulated customer_validation: outcome=DENIED_UNAUTHORIZED. Response: 'Customer states they received the fraud inquiry SMS and did not authorize the $100.07 purchase on card C02923-K1.'."
+    },
+    {
+      "step": "GraphRAG Policy Retrieval",
+      "thought": "Retrieved 3 policy and precedent documents for query 'policy actions for card_not_present_fraud fraud with unauthorized card'."
+    },
+    {
+      "step": "Final Assessment",
+      "thought": "Final resolution: verdict=fraud, prob=0.90, pattern=card_not_present_fraud, exposure=$100.07. Stop reason: Definitive evidence of unauthorized activity established; episode exposure computed and protective actions executed."
+    },
+    {
+      "step": "Policy Rules Evaluation",
+      "thought": "Computed final actions: ['BLOCK_CARD', 'CREATE_CASE']. SAR Required: False (Confirmed fraud exposure of $100.07 is under $1,000 threshold and no shared ring was identified)."
+    },
+    {
+      "step": "SAR Generation",
+      "thought": "SAR filing not triggered under bank policy thresholds."
+    },
+    {
+      "step": "Persist & Memory",
+      "thought": "Persisted case HHG-005 to TigerGraph (success=True). Case memory updated."
+    }
+  ]
+}

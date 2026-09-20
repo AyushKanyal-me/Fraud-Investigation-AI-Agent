@@ -1,0 +1,8 @@
+CREATE QUERY card_window(VERTEX<Card> c, INT center_ts, INT window_sec) FOR GRAPH FraudGraph {
+    /* Returns transactions for a card within [center_ts - window_sec, center_ts + window_sec] */
+    CardSet = {c};
+    Txns = SELECT t FROM CardSet:s -(PERFORMED_BY)- Transaction:t
+           WHERE t.ts >= center_ts - window_sec AND t.ts <= center_ts + window_sec
+           ORDER BY t.ts ASC;
+    PRINT Txns;
+}

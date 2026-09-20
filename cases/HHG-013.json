@@ -1,0 +1,130 @@
+{
+  "case_id": "HHG-013",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.9,
+    "pattern": "out_of_region_use",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3526826"
+    ],
+    "first_suspicious_txn_id": "3526826",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 35.66,
+    "evidence": [
+      {
+        "claim": "Transaction initiated from unseen device profile (Windows) not present in historical baseline",
+        "source": "graph",
+        "ref": "query:get_time_bounded_card_baseline(card_id=C07671-K2)",
+        "entity_ids": [
+          "3526826"
+        ]
+      },
+      {
+        "claim": "Transaction location (region nan) differs from cardholder 30-day home region 264.0",
+        "source": "graph",
+        "ref": "query:region_anomaly",
+        "entity_ids": [
+          "3526826"
+        ]
+      },
+      {
+        "claim": "Customer denied transaction 3526826 ($35.66) when contacted",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": [
+          "3526826"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-1475",
+      "CC-3216",
+      "CC-3761"
+    ],
+    "summary": "Investigation of case HHG-013 confirmed unauthorized out_of_region_use activity on card C07671-K2 totaling $35.66 USD across 1 transaction(s). Graph traversal identified device profile Windows linking 0 connected card(s). Protective card block and case records have been initiated in compliance with Bank Fraud Policy R2/R6.",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-HHG-013"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 7,
+      "assumed_response": "Customer states they received the fraud inquiry SMS and did not authorize the $35.66 purchase on card C07671-K2."
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: Assessed fraud probability 0.45 is below 0.70 on initial alert; verify before blocking to prevent policy breach"
+      }
+    ],
+    "final": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: Confirmed unauthorized fraud; exposure $35.66 (is under $2,500 threshold (L1))"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2 and Section 3a: Open internal fraud case and persist evidence to graph"
+      }
+    ],
+    "what_changed": "Customer denial / step-up failure confirmed unauthorized compromise, raising probability from 0.45 to 0.90 and triggering block under Rule R2."
+  },
+  "sar": {
+    "file": false,
+    "reason": "Confirmed fraud exposure of $35.66 is under $1,000 threshold and no shared ring was identified",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "Definitive evidence of unauthorized activity established; episode exposure computed and protective actions executed.",
+  "tool_calls": 8,
+  "tokens": 0,
+  "latency_s": 0.23,
+  "explainability_trace": [
+    {
+      "step": "Initialize Case",
+      "thought": "Initiating investigation for case HHG-013. Trigger: risk_score ('Real-time model scored transaction 3526826 ($35.66, online) at 0.76. Review and decide.'). Flagged Txn: 3526826."
+    },
+    {
+      "step": "Gather Evidence",
+      "thought": "Retrieved graph data for 3526826. Baseline avg: $90.65. Episode txns: 1 ($35.66). Connected cards: 0."
+    },
+    {
+      "step": "Initial Assessment",
+      "thought": "Evaluated initial signals: verdict=uncertain, prob=0.45, pattern=out_of_region_use. Recommended initial actions: ['VERIFY_WITH_CUSTOMER']."
+    },
+    {
+      "step": "Customer Verification",
+      "thought": "Simulated customer_validation: outcome=DENIED_UNAUTHORIZED. Response: 'Customer states they received the fraud inquiry SMS and did not authorize the $35.66 purchase on card C07671-K2.'."
+    },
+    {
+      "step": "GraphRAG Policy Retrieval",
+      "thought": "Retrieved 3 policy and precedent documents for query 'policy actions for out_of_region_use fraud with unauthorized card'."
+    },
+    {
+      "step": "Final Assessment",
+      "thought": "Final resolution: verdict=fraud, prob=0.90, pattern=out_of_region_use, exposure=$35.66. Stop reason: Definitive evidence of unauthorized activity established; episode exposure computed and protective actions executed."
+    },
+    {
+      "step": "Policy Rules Evaluation",
+      "thought": "Computed final actions: ['BLOCK_CARD', 'CREATE_CASE']. SAR Required: False (Confirmed fraud exposure of $35.66 is under $1,000 threshold and no shared ring was identified)."
+    },
+    {
+      "step": "SAR Generation",
+      "thought": "SAR filing not triggered under bank policy thresholds."
+    },
+    {
+      "step": "Persist & Memory",
+      "thought": "Persisted case HHG-013 to TigerGraph (success=True). Case memory updated."
+    }
+  ]
+}
