@@ -62,9 +62,26 @@ class TigerGraphFraudRepository(FraudDataRepository):
                 txn_data = res[0].get("TxnSet", [])
                 if txn_data:
                     attrs = txn_data[0].get("attributes", {})
+                    card_id = ""
+                    cards_data = res[0].get("Cards", [])
+                    if cards_data:
+                        card_id = str(cards_data[0].get("v_id", ""))
+                    if not card_id:
+                        cust_id = str(attrs.get("customer_id", ""))
+                        t_tup = (
+                            cust_id,
+                            str(attrs.get("card1", "-1")),
+                            str(attrs.get("card2", "-1")),
+                            str(attrs.get("card3", "-1")),
+                            str(attrs.get("card4", "unk")),
+                            str(attrs.get("card5", "-1")),
+                            str(attrs.get("card6", "unk"))
+                        )
+                        card_id = self.fallback_local.card_mapper.tuple_to_card.get(t_tup, f"{cust_id}-K1")
+
                     return TransactionRecord(
                         transaction_id=str(transaction_id),
-                        card_id=str(attrs.get("card_id", "")),
+                        card_id=card_id,
                         customer_id=str(attrs.get("customer_id", "")),
                         amount=float(attrs.get("amount", 0.0)),
                         ts_val=float(attrs.get("ts", 0.0)),

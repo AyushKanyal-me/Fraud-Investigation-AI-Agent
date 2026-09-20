@@ -85,7 +85,7 @@
   "stop_reason": "Definitive evidence of unauthorized activity established; episode exposure computed and protective actions executed.",
   "tool_calls": 7,
   "tokens": 0,
-  "latency_s": 0.48,
+  "latency_s": 0.28,
   "explainability_trace": [
     {
       "step": "Initialize Case",

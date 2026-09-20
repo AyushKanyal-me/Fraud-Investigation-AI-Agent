@@ -42,6 +42,11 @@ class LocalFraudRepository(FraudDataRepository):
             return
 
         txn_path = self.dataset_dir / "transactions.csv"
+        if not txn_path.exists():
+            fixture_path = BASE_DIR / "tests" / "fixtures" / "sample_transactions.csv"
+            if fixture_path.exists():
+                txn_path = fixture_path
+
         id_path = self.dataset_dir / "identity.csv"
         closed_path = self.dataset_dir / "closed_cases_history.csv"
 
@@ -54,19 +59,26 @@ class LocalFraudRepository(FraudDataRepository):
         if closed_path.exists():
             df_closed = pd.read_csv(closed_path, dtype=str)
 
-        df_txn = pd.read_csv(
-            txn_path,
-            dtype={
-                "TransactionID": str,
-                "customer_id": str,
-                "ProductCD": str,
-                "P_emaildomain": str,
-                "R_emaildomain": str,
-                "card1": str, "card2": str, "card3": str, "card4": str, "card5": str, "card6": str,
-                "addr1": str, "addr2": str, "dist1": str, "dist2": str,
-                "TransactionAmt": float, "TransactionDT": float, "risk_score": float
-            }
-        )
+        if txn_path.exists():
+            df_txn = pd.read_csv(
+                txn_path,
+                dtype={
+                    "TransactionID": str,
+                    "customer_id": str,
+                    "ProductCD": str,
+                    "P_emaildomain": str,
+                    "R_emaildomain": str,
+                    "card1": str, "card2": str, "card3": str, "card4": str, "card5": str, "card6": str,
+                    "addr1": str, "addr2": str, "dist1": str, "dist2": str,
+                    "TransactionAmt": float, "TransactionDT": float, "risk_score": float
+                }
+            )
+        else:
+            df_txn = pd.DataFrame(columns=[
+                "TransactionID", "customer_id", "ProductCD", "P_emaildomain", "R_emaildomain",
+                "card1", "card2", "card3", "card4", "card5", "card6",
+                "addr1", "addr2", "dist1", "dist2", "TransactionAmt", "TransactionDT", "risk_score"
+            ])
 
         df_txn = df_txn.copy()
 

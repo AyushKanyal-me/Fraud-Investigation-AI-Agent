@@ -43,7 +43,10 @@ def local_repo():
 
 @pytest.fixture
 def tg_repo():
-    return TigerGraphFraudRepository()
+    repo = TigerGraphFraudRepository()
+    # Force offline mode to verify guaranteed fallback parity
+    repo.conn = None
+    return repo
 
 def test_offline_tg_repo_fallback_parity(local_repo, tg_repo):
     """
