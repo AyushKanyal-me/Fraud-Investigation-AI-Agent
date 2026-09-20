@@ -32,7 +32,10 @@ Datatset/identity.csv
 
 # Working Memory & Persistence
 checkpoints/*.json
+checkpoints/*.db
+*.db
 logs/*.jsonl
 rag/chroma_db/
 *.tmp
 *.log
+
