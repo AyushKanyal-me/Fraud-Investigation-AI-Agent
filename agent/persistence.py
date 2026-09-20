@@ -38,13 +38,29 @@ def atomic_write_json(file_path: Path, data: Dict[str, Any], indent: int = 2) ->
                 pass
         raise IOError(f"Failed atomic write to {file_path}: {e}")
 
+import hashlib
+
 class AuditLogger:
     """
-    Structured, append-only audit logger for investigation events and policy decisions.
+    Structured, append-only audit logger with SHA-256 hash-chain integrity
+    for investigation events and policy decisions.
     """
     def __init__(self, log_dir: Optional[Path] = None):
         self.log_dir = Path(log_dir) if log_dir else AUDIT_LOG_DIR
         self.log_dir.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _canonical_bytes(data: Dict[str, Any]) -> bytes:
+        """Serializes dictionary to deterministic canonical JSON bytes for hashing."""
+        return json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+    def _get_last_hash(self, case_id: str) -> str:
+        """Retrieves the record_hash of the most recent audit entry for a case."""
+        events = self.get_audit_trail(case_id)
+        if not events:
+            return "GENESIS"
+        last_event = events[-1]
+        return last_event.get("record_hash", "GENESIS")
 
     def log_event(
         self,
@@ -55,20 +71,26 @@ class AuditLogger:
         provenance: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Appends an immutable audit record for a given case.
+        Appends an immutable audit record with cryptographic hash linkage.
         """
         event_id = str(uuid.uuid4())
         timestamp = datetime.now(timezone.utc).isoformat()
+        prev_hash = self._get_last_hash(case_id)
         
-        record = {
+        record_payload = {
             "event_id": event_id,
             "case_id": case_id,
             "timestamp": timestamp,
             "event_type": event_type,
             "actor": actor,
             "details": details,
-            "provenance": provenance or {}
+            "provenance": provenance or {},
+            "prev_hash": prev_hash
         }
+        
+        record_hash = hashlib.sha256(self._canonical_bytes(record_payload)).hexdigest()
+        record = dict(record_payload)
+        record["record_hash"] = record_hash
         
         case_log_file = self.log_dir / f"{case_id}_audit.jsonl"
         with open(case_log_file, "a", encoding="utf-8") as f:
@@ -95,17 +117,62 @@ class AuditLogger:
                         continue
         return events
 
+    def verify_chain_integrity(self, case_id: str) -> tuple[bool, List[str]]:
+        """
+        Verifies the tamper-evidence of the audit chain for a case.
+        Handles backwards-compatibility with legacy pre-hash records gracefully.
+        Returns (is_valid, error_list).
+        """
+        events = self.get_audit_trail(case_id)
+        if not events:
+            return True, []
+
+        # Filter to chained events
+        chained_events = [e for e in events if "record_hash" in e]
+        if not chained_events:
+            return True, []
+
+        errors = []
+        expected_prev_hash = "GENESIS"
+
+        for idx, event in enumerate(chained_events):
+            event_id = event.get("event_id", f"idx_{idx}")
+            actual_prev_hash = event.get("prev_hash")
+            actual_record_hash = event.get("record_hash")
+
+            # Check previous hash link
+            if actual_prev_hash != expected_prev_hash:
+                errors.append(
+                    f"Broken hash link at event {idx} ({event_id}): "
+                    f"expected prev_hash '{expected_prev_hash}', found '{actual_prev_hash}'"
+                )
+
+            # Recompute record hash
+            payload_to_hash = {k: v for k, v in event.items() if k != "record_hash"}
+            recomputed_hash = hashlib.sha256(self._canonical_bytes(payload_to_hash)).hexdigest()
+
+            if actual_record_hash != recomputed_hash:
+                errors.append(
+                    f"Tampered content at event {idx} ({event_id}): "
+                    f"recorded hash '{actual_record_hash}' != recomputed '{recomputed_hash}'"
+                )
+
+            expected_prev_hash = actual_record_hash or ""
+
+        return (len(errors) == 0), errors
+
+
 class InvestigationPersistenceManager:
     """
     Manages persistence of internal investigation state (cases/) 
     and deliverable benchmark outputs (answers/).
     """
-    def __init__(self, cases_dir: Optional[Path] = None, answers_dir: Optional[Path] = None):
+    def __init__(self, cases_dir: Optional[Path] = None, answers_dir: Optional[Path] = None, log_dir: Optional[Path] = None):
         self.cases_dir = Path(cases_dir) if cases_dir else CASES_DIR
         self.answers_dir = Path(answers_dir) if answers_dir else ANSWERS_DIR
         self.cases_dir.mkdir(parents=True, exist_ok=True)
         self.answers_dir.mkdir(parents=True, exist_ok=True)
-        self.audit_logger = AuditLogger()
+        self.audit_logger = AuditLogger(log_dir=log_dir)
 
     def persist_case_state(self, case_id: str, case_data: Dict[str, Any], actor: str = "agent") -> Path:
         """
@@ -147,10 +214,14 @@ class InvestigationPersistenceManager:
     def get_audit_trail(self, case_id: str) -> List[Dict[str, Any]]:
         return self.audit_logger.get_audit_trail(case_id)
 
+    def verify_audit_integrity(self, case_id: str) -> tuple[bool, List[str]]:
+        return self.audit_logger.verify_chain_integrity(case_id)
+
 _persistence_mgr = None
 
-def get_persistence_manager() -> InvestigationPersistenceManager:
+def get_persistence_manager(cases_dir: Optional[Path] = None, answers_dir: Optional[Path] = None, log_dir: Optional[Path] = None) -> InvestigationPersistenceManager:
     global _persistence_mgr
     if _persistence_mgr is None:
-        _persistence_mgr = InvestigationPersistenceManager()
+        _persistence_mgr = InvestigationPersistenceManager(cases_dir=cases_dir, answers_dir=answers_dir, log_dir=log_dir)
     return _persistence_mgr
+

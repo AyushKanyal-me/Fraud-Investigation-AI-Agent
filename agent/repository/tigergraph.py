@@ -21,14 +21,24 @@ from agent.repository.base import (
 )
 from agent.repository.local import LocalFraudRepository
 
+import logging
+from datetime import datetime, timezone
+
+logger = logging.getLogger("tigergraph_repository")
+
 class TigerGraphFraudRepository(FraudDataRepository):
     """
     TigerGraph-backed implementation of FraudDataRepository using pyTigerGraph / GSQL REST queries.
     Maintains semantic parity with LocalFraudRepository while executing graph-native traversals.
+    Provides observable fallback tracking and structured health diagnostics.
     """
     def __init__(self, fallback_local: Optional[LocalFraudRepository] = None):
         self.conn = None
         self.fallback_local = fallback_local or LocalFraudRepository()
+        self.fallback_count: int = 0
+        self.last_fallback_reason: Optional[str] = None
+        self.last_fallback_timestamp: Optional[str] = None
+        self.query_count: int = 0
         self._init_tg()
 
     def _init_tg(self):
@@ -45,19 +55,59 @@ class TigerGraphFraudRepository(FraudDataRepository):
             try:
                 secret = self.conn.createSecret()
                 self.conn.getToken(secret)
-            except Exception:
-                pass
+            except Exception as tok_err:
+                logger.debug("TG Token acquisition skipped or failed: %s", tok_err)
         except Exception as e:
             self.conn = None
+            self._record_fallback("init", str(e))
+
+    def _record_fallback(self, method_name: str, reason: str):
+        self.fallback_count += 1
+        self.last_fallback_reason = reason
+        self.last_fallback_timestamp = datetime.now(timezone.utc).isoformat()
+        logger.warning(
+            "TG_FALLBACK: Method '%s' encountered error: %s. Falling back to local repository.",
+            method_name,
+            reason
+        )
 
     def is_connected(self) -> bool:
         return self.conn is not None
 
+    def get_health_status(self) -> Dict[str, Any]:
+        """Returns diagnostic metrics on TigerGraph connectivity and fallback history."""
+        return {
+            "backend": "tigergraph",
+            "is_connected": self.is_connected(),
+            "graph_name": TG_GRAPH_NAME,
+            "host": TG_HOST,
+            "query_count": self.query_count,
+            "fallback_count": self.fallback_count,
+            "last_fallback_reason": self.last_fallback_reason,
+            "last_fallback_timestamp": self.last_fallback_timestamp
+        }
+
+    def _vertex_param(self, v_id: str, v_type: Optional[str] = None):
+        """Helper to format vertex parameters for pyTigerGraph 1.x and 2.x compatibility."""
+        if v_type:
+            return (str(v_id), v_type)
+        return (str(v_id),)
+
     def get_transaction_detail(self, transaction_id: str) -> Optional[TransactionRecord]:
+        self.query_count += 1
         if not self.conn:
+            self._record_fallback("get_transaction_detail", "TigerGraph connection not initialized")
             return self.fallback_local.get_transaction_detail(transaction_id)
         try:
-            res = self.conn.runInstalledQuery("transaction_detail", {"t": str(transaction_id)})
+            # Try 1-tuple format, fallback to string if needed
+            try:
+                res = self.conn.runInstalledQuery("transaction_detail", {"t": (str(transaction_id), "Transaction")})
+            except Exception:
+                try:
+                    res = self.conn.runInstalledQuery("transaction_detail", {"t": (str(transaction_id),)})
+                except Exception:
+                    res = self.conn.runInstalledQuery("transaction_detail", {"t": str(transaction_id)})
+
             if res and len(res) > 0:
                 txn_data = res[0].get("TxnSet", [])
                 if txn_data:
@@ -79,14 +129,31 @@ class TigerGraphFraudRepository(FraudDataRepository):
                         )
                         card_id = self.fallback_local.card_mapper.tuple_to_card.get(t_tup, f"{cust_id}-K1")
 
+                    amt_val = float(attrs.get("amount", 0.0) or attrs.get("TransactionAmt", 0.0) or 0.0)
+                    ts_val = float(attrs.get("ts", 0.0) or attrs.get("TransactionDT", 0.0) or 0.0)
+                    risk_val = float(attrs.get("risk_score", 0.0) or 0.0)
+                    cust_id = str(attrs.get("customer_id", ""))
+                    channel_val = str(attrs.get("channel", "online"))
+
+                    # If key attributes are missing from TG vertex, enrich with local record
+                    if amt_val <= 0 or not cust_id:
+                        local_rec = self.fallback_local.get_transaction_detail(transaction_id)
+                        if local_rec:
+                            amt_val = amt_val if amt_val > 0 else local_rec.amount
+                            ts_val = ts_val if ts_val > 0 else local_rec.ts_val
+                            risk_val = risk_val if risk_val > 0 else local_rec.risk_score
+                            cust_id = cust_id or local_rec.customer_id
+                            card_id = card_id or local_rec.card_id
+                            channel_val = channel_val if channel_val != "online" else local_rec.channel
+
                     return TransactionRecord(
                         transaction_id=str(transaction_id),
-                        card_id=card_id,
-                        customer_id=str(attrs.get("customer_id", "")),
-                        amount=float(attrs.get("amount", 0.0)),
-                        ts_val=float(attrs.get("ts", 0.0)),
-                        channel=str(attrs.get("channel", "online")),
-                        risk_score=float(attrs.get("risk_score", 0.0)),
+                        card_id=card_id or f"{cust_id}-K1",
+                        customer_id=cust_id,
+                        amount=amt_val,
+                        ts_val=ts_val,
+                        channel=channel_val,
+                        risk_score=risk_val,
                         product_cd=str(attrs.get("ProductCD", "W")),
                         addr1=str(attrs.get("addr1")) if attrs.get("addr1") is not None else None,
                         addr2=str(attrs.get("addr2")) if attrs.get("addr2") is not None else None,
@@ -96,19 +163,37 @@ class TigerGraphFraudRepository(FraudDataRepository):
                         device_info=attrs.get("DeviceInfo", "unknown"),
                         raw_data=attrs
                     )
-        except Exception:
-            pass
+
+        except Exception as e:
+            self._record_fallback("get_transaction_detail", str(e))
         return self.fallback_local.get_transaction_detail(transaction_id)
 
     def get_card_baseline(self, card_id: str, before_ts: float, lookback_sec: float = 30 * 86400) -> CardBaseline:
+        self.query_count += 1
         if not self.conn:
+            self._record_fallback("get_card_baseline", "TigerGraph connection not initialized")
             return self.fallback_local.get_card_baseline(card_id, before_ts, lookback_sec)
         try:
-            res = self.conn.runInstalledQuery("card_history", {
-                "c": str(card_id),
-                "before_ts": int(before_ts),
-                "lookback_sec": int(lookback_sec)
-            })
+            try:
+                res = self.conn.runInstalledQuery("card_history", {
+                    "c": (str(card_id), "Card"),
+                    "before_ts": int(before_ts),
+                    "lookback_sec": int(lookback_sec)
+                })
+            except Exception:
+                try:
+                    res = self.conn.runInstalledQuery("card_history", {
+                        "c": (str(card_id),),
+                        "before_ts": int(before_ts),
+                        "lookback_sec": int(lookback_sec)
+                    })
+                except Exception:
+                    res = self.conn.runInstalledQuery("card_history", {
+                        "c": str(card_id),
+                        "before_ts": int(before_ts),
+                        "lookback_sec": int(lookback_sec)
+                    })
+
             if res and len(res) > 0:
                 stats = res[0].get("Stats", {})
                 if stats:
@@ -121,12 +206,14 @@ class TigerGraphFraudRepository(FraudDataRepository):
                         known_emails=set(stats.get("emails", [])),
                         primary_addr1=stats.get("primary_addr1")
                     )
-        except Exception:
-            pass
+        except Exception as e:
+            self._record_fallback("get_card_baseline", str(e))
         return self.fallback_local.get_card_baseline(card_id, before_ts, lookback_sec)
 
     def expand_fraud_episode(self, card_id: str, center_ts: float, flagged_txn_id: str, window_sec: float = 86400) -> EpisodeWindow:
+        self.query_count += 1
         if not self.conn:
+            self._record_fallback("expand_fraud_episode", "TigerGraph connection not initialized")
             return self.fallback_local.expand_fraud_episode(card_id, center_ts, flagged_txn_id, window_sec)
         try:
             res = self.conn.runInstalledQuery("card_testing_detection", {
@@ -147,12 +234,14 @@ class TigerGraphFraudRepository(FraudDataRepository):
                             "testing_cleared_gt_100": bool(data.get("ClearedGt100", False))
                         }
                     )
-        except Exception:
-            pass
+        except Exception as e:
+            self._record_fallback("expand_fraud_episode", str(e))
         return self.fallback_local.expand_fraud_episode(card_id, center_ts, flagged_txn_id, window_sec)
 
     def get_device_neighbors(self, device_info: str, center_ts: float, window_sec: float = 7 * 86400, exclude_card_id: Optional[str] = None) -> List[DeviceNeighbor]:
+        self.query_count += 1
         if not self.conn:
+            self._record_fallback("get_device_neighbors", "TigerGraph connection not initialized")
             return self.fallback_local.get_device_neighbors(device_info, center_ts, window_sec, exclude_card_id)
         try:
             res = self.conn.runInstalledQuery("device_neighbors", {"dev": str(device_info)})
@@ -172,12 +261,14 @@ class TigerGraphFraudRepository(FraudDataRepository):
                     ))
                 if neighbors:
                     return neighbors
-        except Exception:
-            pass
+        except Exception as e:
+            self._record_fallback("get_device_neighbors", str(e))
         return self.fallback_local.get_device_neighbors(device_info, center_ts, window_sec, exclude_card_id)
 
     def get_similar_closed_cases(self, pattern: Optional[str] = None, customer_id: Optional[str] = None, top_k: int = 3) -> List[ClosedCaseRecord]:
+        self.query_count += 1
         if not self.conn:
+            self._record_fallback("get_similar_closed_cases", "TigerGraph connection not initialized")
             return self.fallback_local.get_similar_closed_cases(pattern, customer_id, top_k)
         try:
             res = self.conn.runInstalledQuery("similar_closed_cases", {"pattern_filter": pattern or ""})
@@ -199,12 +290,14 @@ class TigerGraphFraudRepository(FraudDataRepository):
                     ))
                 if records:
                     return records
-        except Exception:
-            pass
+        except Exception as e:
+            self._record_fallback("get_similar_closed_cases", str(e))
         return self.fallback_local.get_similar_closed_cases(pattern, customer_id, top_k)
 
     def persist_case_graph(self, case_id: str, case_data: Dict[str, Any]) -> bool:
+        self.query_count += 1
         if not self.conn:
+            self._record_fallback("persist_case_graph", "TigerGraph connection not initialized")
             return self.fallback_local.persist_case_graph(case_id, case_data)
         try:
             c_obj = case_data.get("case", {})
@@ -217,5 +310,7 @@ class TigerGraphFraudRepository(FraudDataRepository):
                 "exposure": float(c_obj.get("exposure_usd", 0.0))
             })
             return True
-        except Exception:
+        except Exception as e:
+            self._record_fallback("persist_case_graph", str(e))
             return self.fallback_local.persist_case_graph(case_id, case_data)
+

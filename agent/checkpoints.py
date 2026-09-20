@@ -96,8 +96,17 @@ class FileCheckpointStore(CheckpointStore):
 
 _checkpoint_store = None
 
-def get_checkpoint_store() -> CheckpointStore:
+def get_checkpoint_store(backend: Optional[str] = None) -> CheckpointStore:
     global _checkpoint_store
     if _checkpoint_store is None:
-        _checkpoint_store = FileCheckpointStore()
+        target_backend = backend or os.getenv("CHECKPOINT_BACKEND", "sqlite").lower()
+        if target_backend == "postgres":
+            from agent.checkpoints_db import PostgresCheckpointStore
+            _checkpoint_store = PostgresCheckpointStore()
+        elif target_backend == "file":
+            _checkpoint_store = FileCheckpointStore()
+        else:
+            from agent.checkpoints_db import SQLiteCheckpointStore
+            _checkpoint_store = SQLiteCheckpointStore()
     return _checkpoint_store
+

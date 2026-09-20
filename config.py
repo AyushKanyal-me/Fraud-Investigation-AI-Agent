@@ -7,9 +7,10 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 # API Keys & Auth
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "YOUR_GEMINI_API_KEY_HERE"
-API_AUTH_KEY = os.getenv("API_AUTH_KEY", "tg-fraud-key-dev-2026")
-AUTH_DISABLED = os.getenv("AUTH_DISABLED", "false").lower() in ("true", "1", "yes")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or ""
+API_AUTH_KEY = os.getenv("API_AUTH_KEY")
+CHECKPOINT_BACKEND = os.getenv("CHECKPOINT_BACKEND", "sqlite")
+
 
 # Server / CORS Settings
 CORS_ALLOWED_ORIGINS = [
@@ -19,7 +20,8 @@ CORS_ALLOWED_ORIGINS = [
 
 # Mode Flags
 SIMULATION_MODE = os.getenv("SIMULATION_MODE", "true").lower() in ("true", "1", "yes")
-DATA_REPOSITORY_BACKEND = os.getenv("DATA_REPOSITORY_BACKEND", "local")
+DATA_REPOSITORY_BACKEND = os.getenv("DATA_REPOSITORY_BACKEND", "tigergraph")
+
 
 # TigerGraph Settings
 TG_HOST = os.getenv("TIGERGRAPH_HOST", "http://localhost")
