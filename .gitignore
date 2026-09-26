@@ -38,4 +38,8 @@ logs/*.jsonl
 rag/chroma_db/
 *.tmp
 *.log
+*.egg-info/
+dist/
+build/
+
 

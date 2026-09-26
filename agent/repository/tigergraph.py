@@ -67,7 +67,7 @@ class TigerGraphFraudRepository(FraudDataRepository):
         self.fallback_count += 1
         self.last_fallback_reason = reason
         self.last_fallback_timestamp = datetime.now(timezone.utc).isoformat()
-        if self.fallback_policy == "fail_closed" and method_name != "init":
+        if self.fallback_policy == "fail_closed":
             msg = f"TigerGraph query failed in '{method_name}': {reason}. Policy is fail_closed."
             logger.error("TG_FAIL_CLOSED: %s", msg)
             raise TigerGraphUnavailableError(msg)
@@ -80,6 +80,18 @@ class TigerGraphFraudRepository(FraudDataRepository):
 
     def is_connected(self) -> bool:
         return self.conn is not None
+
+    def check_connectivity(self) -> bool:
+        """Pings TigerGraph to verify live query connectivity."""
+        if not self.conn:
+            return False
+        try:
+            res = self.conn.echo()
+            return bool(res)
+        except Exception as e:
+            logger.debug("TigerGraph echo check failed: %s", e)
+            return False
+
 
     def get_health_status(self) -> Dict[str, Any]:
         """Returns diagnostic metrics on TigerGraph connectivity and fallback history."""

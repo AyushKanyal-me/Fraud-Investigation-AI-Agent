@@ -22,7 +22,11 @@ from rag.vector_store import FraudVectorStore
 from memory.case_memory import CaseMemory
 from agent.simulator import CustomerSimulator
 from agent.policy import evaluate_policy_rules, CustomerReplyOutcome, get_action_route
+from agent.evidence_classifier import classify_evidence_response
 from agent.schemas import HypothesisOutput, EvidenceSynthesisOutput, SARNarrativeOutput
+from agent.token_tracker import TokenTracker
+
+
 from agent.prompts import (
     INVESTIGATION_SYSTEM_PROMPT,
     INITIAL_ASSESSMENT_PROMPT,
@@ -110,6 +114,7 @@ class FraudInvestigationGraph:
         self.tools = tools or GraphTools()
         self.vector_store = vector_store or FraudVectorStore()
         self.memory = memory or CaseMemory()
+        self.token_tracker = TokenTracker()
         self.client = None
         self.llm = None
         self._init_llm()
@@ -142,7 +147,8 @@ class FraudInvestigationGraph:
             except Exception as e:
                 print(f"[i] LangGraph langchain Gemini note: {e}")
 
-    def _call_gemini(self, prompt: str) -> Optional[str]:
+    def _call_gemini(self, prompt: str, step_name: str = "llm_call") -> Optional[str]:
+        t0 = time.time()
         if self.client:
             for model_id in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"]:
                 try:
@@ -150,20 +156,43 @@ class FraudInvestigationGraph:
                         model=model_id,
                         contents=prompt,
                     )
+                    latency = time.time() - t0
                     if response and response.text:
+                        p_toks = getattr(response.usage_metadata, "prompt_token_count", 0) if hasattr(response, "usage_metadata") and response.usage_metadata else max(len(prompt) // 4, 1)
+                        c_toks = getattr(response.usage_metadata, "candidates_token_count", 0) if hasattr(response, "usage_metadata") and response.usage_metadata else max(len(response.text) // 4, 1)
+                        self.token_tracker.record_usage(
+                            step_name=step_name,
+                            model_name=model_id,
+                            prompt_tokens=int(p_toks or 0),
+                            completion_tokens=int(c_toks or 0),
+                            latency_s=latency
+                        )
                         return response.text.strip()
                 except Exception:
                     continue
         if self.llm:
             try:
                 res = self.llm.invoke(prompt)
-                return res.content.strip()
+                latency = time.time() - t0
+                if res and res.content:
+                    usage = getattr(res, "usage_metadata", None) or getattr(res, "response_metadata", {}).get("token_usage", {})
+                    p_toks = usage.get("input_tokens", usage.get("prompt_tokens", max(len(prompt) // 4, 1))) if isinstance(usage, dict) else getattr(usage, "input_tokens", max(len(prompt) // 4, 1))
+                    c_toks = usage.get("output_tokens", usage.get("completion_tokens", max(len(str(res.content)) // 4, 1))) if isinstance(usage, dict) else getattr(usage, "output_tokens", max(len(str(res.content)) // 4, 1))
+                    self.token_tracker.record_usage(
+                        step_name=step_name,
+                        model_name=getattr(self.llm, "model", "langchain-gemini"),
+                        prompt_tokens=int(p_toks or 0),
+                        completion_tokens=int(c_toks or 0),
+                        latency_s=latency
+                    )
+                    return str(res.content).strip()
             except Exception:
                 pass
         return None
 
-    def _call_gemini_structured(self, prompt: str, schema_cls: Any) -> Optional[Any]:
+    def _call_gemini_structured(self, prompt: str, schema_cls: Any, step_name: str = "llm_structured_call") -> Optional[Any]:
         """Calls Gemini with structured schema output enforcement and Pydantic validation."""
+        t0 = time.time()
         if self.client:
             for model_id in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"]:
                 try:
@@ -177,7 +206,17 @@ class FraudInvestigationGraph:
                         contents=prompt,
                         config=config
                     )
+                    latency = time.time() - t0
                     if response and response.text:
+                        p_toks = getattr(response.usage_metadata, "prompt_token_count", 0) if hasattr(response, "usage_metadata") and response.usage_metadata else max(len(prompt) // 4, 1)
+                        c_toks = getattr(response.usage_metadata, "candidates_token_count", 0) if hasattr(response, "usage_metadata") and response.usage_metadata else max(len(response.text) // 4, 1)
+                        self.token_tracker.record_usage(
+                            step_name=step_name,
+                            model_name=model_id,
+                            prompt_tokens=int(p_toks or 0),
+                            completion_tokens=int(c_toks or 0),
+                            latency_s=latency
+                        )
                         parsed = schema_cls.from_llm_text(response.text)
                         if parsed:
                             return parsed
@@ -187,7 +226,17 @@ class FraudInvestigationGraph:
                             model=model_id,
                             contents=prompt + f"\n\nReturn ONLY a valid JSON object matching the schema for {schema_cls.__name__}."
                         )
+                        latency = time.time() - t0
                         if response and response.text:
+                            p_toks = getattr(response.usage_metadata, "prompt_token_count", 0) if hasattr(response, "usage_metadata") and response.usage_metadata else max(len(prompt) // 4, 1)
+                            c_toks = getattr(response.usage_metadata, "candidates_token_count", 0) if hasattr(response, "usage_metadata") and response.usage_metadata else max(len(response.text) // 4, 1)
+                            self.token_tracker.record_usage(
+                                step_name=step_name,
+                                model_name=model_id,
+                                prompt_tokens=int(p_toks or 0),
+                                completion_tokens=int(c_toks or 0),
+                                latency_s=latency
+                            )
                             parsed = schema_cls.from_llm_text(response.text)
                             if parsed:
                                 return parsed
@@ -200,6 +249,17 @@ class FraudInvestigationGraph:
                     try:
                         structured_llm = self.llm.with_structured_output(schema_cls)
                         res = structured_llm.invoke(prompt)
+                        latency = time.time() - t0
+                        usage = getattr(res, "usage_metadata", None) or getattr(res, "response_metadata", {}).get("token_usage", {})
+                        p_toks = usage.get("input_tokens", usage.get("prompt_tokens", max(len(prompt) // 4, 1))) if isinstance(usage, dict) else getattr(usage, "input_tokens", max(len(prompt) // 4, 1))
+                        c_toks = usage.get("output_tokens", usage.get("completion_tokens", 50)) if isinstance(usage, dict) else getattr(usage, "output_tokens", 50)
+                        self.token_tracker.record_usage(
+                            step_name=step_name,
+                            model_name=getattr(self.llm, "model", "langchain-gemini"),
+                            prompt_tokens=int(p_toks or 0),
+                            completion_tokens=int(c_toks or 0),
+                            latency_s=latency
+                        )
                         if isinstance(res, schema_cls):
                             return res
                         elif isinstance(res, dict):
@@ -207,17 +267,29 @@ class FraudInvestigationGraph:
                     except Exception:
                         pass
                 res = self.llm.invoke(prompt + f"\n\nReturn ONLY a valid JSON object matching {schema_cls.__name__}.")
+                latency = time.time() - t0
                 if res and res.content:
+                    usage = getattr(res, "usage_metadata", None) or getattr(res, "response_metadata", {}).get("token_usage", {})
+                    p_toks = usage.get("input_tokens", usage.get("prompt_tokens", max(len(prompt) // 4, 1))) if isinstance(usage, dict) else getattr(usage, "input_tokens", max(len(prompt) // 4, 1))
+                    c_toks = usage.get("output_tokens", usage.get("completion_tokens", max(len(str(res.content)) // 4, 1))) if isinstance(usage, dict) else getattr(usage, "output_tokens", max(len(str(res.content)) // 4, 1))
+                    self.token_tracker.record_usage(
+                        step_name=step_name,
+                        model_name=getattr(self.llm, "model", "langchain-gemini"),
+                        prompt_tokens=int(p_toks or 0),
+                        completion_tokens=int(c_toks or 0),
+                        latency_s=latency
+                    )
                     return schema_cls.from_llm_text(res.content)
             except Exception:
                 pass
 
         # Fallback to plain prompt and text parsing
-        raw_text = self._call_gemini(prompt)
+        raw_text = self._call_gemini(prompt, step_name=step_name)
         if raw_text:
             return schema_cls.from_llm_text(raw_text)
 
         return None
+
 
     # -------------------------------------------------------------
     # Node 1: Initialize Case State & Hypotheses
@@ -449,15 +521,18 @@ class FraudInvestigationGraph:
                     has_shared_device_ring=has_shared_device_ring,
                     memory_hits=json.dumps(state.get("memory_hits", {}), default=str)
                 )
-                hyp_output = self._call_gemini_structured(llm_hyp_prompt, HypothesisOutput)
+                hyp_output = self._call_gemini_structured(
+                    llm_hyp_prompt,
+                    HypothesisOutput,
+                    step_name="initial_assessment_hypothesis"
+                )
                 if hyp_output:
-                    tokens_consumed += 350
                     trace.append({
                         "step": "LLM Hypothesis Enrichment",
                         "thought": f"LLM assessed preliminary verdict: {hyp_output.preliminary_verdict} ({hyp_output.preliminary_probability:.2f}) with pattern '{hyp_output.preliminary_pattern}'. Reasoning: {hyp_output.reasoning}"
                     })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("LLM hypothesis enrichment skipped due to error: %s", e)
 
         # Evaluate Initial Policy Actions
         initial_exposure = episode_exposure if initial_verdict != "legitimate" else 0.0
@@ -486,9 +561,10 @@ class FraudInvestigationGraph:
             "initial_actions": initial_actions,
             "initial_exposure": initial_exposure,
             "explainability_trace": trace,
-            "tokens_consumed": tokens_consumed,
+            "tokens_consumed": self.token_tracker.get_total_tokens(),
             "evidence_claims": evidence_claims
         }
+
 
     # -------------------------------------------------------------
     # Node 4: Dynamic Customer Inquiry & Authentication Simulator
@@ -531,14 +607,12 @@ class FraudInvestigationGraph:
             actor_id = sub_ev.get("actor_id", "customer")
             req_id = sub_ev.get("request_id", "ext-req-1")
             
-            # Classify submitted response
-            reply_lower = simulated_reply.lower()
-            if "denied" in reply_lower or "never" in reply_lower or "not authorize" in reply_lower or "unauthorized" in reply_lower:
-                customer_outcome = CustomerReplyOutcome.DENIED_UNAUTHORIZED
-            elif "legitimate" in reply_lower or "authorized" in reply_lower or "confirm" in reply_lower:
-                customer_outcome = CustomerReplyOutcome.CONFIRMED_LEGITIMATE
-            else:
-                customer_outcome = CustomerReplyOutcome.DENIED_UNAUTHORIZED
+            # Robustly classify submitted external response
+            customer_outcome, outcome_conf, outcome_reason = classify_evidence_response(
+                simulated_reply,
+                llm_caller=self._call_gemini if getattr(self, "client", None) else None
+            )
+
 
             inq_type = "customer_validation"
             evidence_requests.append({
@@ -813,19 +887,21 @@ class FraudInvestigationGraph:
                 email_domain=p_email,
                 pattern=final_pattern
             )
-            sar_structured = self._call_gemini_structured(llm_prompt, SARNarrativeOutput)
+            sar_structured = self._call_gemini_structured(
+                llm_prompt,
+                SARNarrativeOutput,
+                step_name="sar_narrative_generation"
+            )
             if sar_structured and sar_structured.narrative and len(sar_structured.narrative.split(".")) >= 5:
                 sar_narrative = sar_structured.narrative
                 if sar_structured.subjects:
                     sar_subjects = list(set(sar_structured.subjects))
                 if sar_structured.total_amount_usd > 0:
                     sar_amount = round(sar_structured.total_amount_usd, 2)
-                tokens_consumed += 450
             else:
-                llm_sar = self._call_gemini(llm_prompt)
+                llm_sar = self._call_gemini(llm_prompt, step_name="sar_narrative_text_generation")
                 if llm_sar and len(llm_sar.split(".")) >= 5:
                     sar_narrative = llm_sar
-                    tokens_consumed += 450
                 else:
                     sar_narrative = (
                         f"On {date_str}, fraud monitoring detected unauthorized transaction activity on card {card_id} "
@@ -857,9 +933,10 @@ class FraudInvestigationGraph:
             "sar_subjects": sar_subjects,
             "sar_amount": sar_amount,
             "sar_dates": sar_dates,
-            "tokens_consumed": tokens_consumed,
+            "tokens_consumed": self.token_tracker.get_total_tokens(),
             "explainability_trace": trace
         }
+
 
     # -------------------------------------------------------------
     # Node 9: Summary, TigerGraph Live Write, & Memory Update
@@ -1027,8 +1104,10 @@ class FraudInvestigationGraph:
     ) -> Dict[str, Any]:
         """Runs the compiled LangGraph workflow for a single case, supporting optional checkpoint resumption."""
         start_time = time.time()
+        self.token_tracker = TokenTracker()
         
         raw_risk_score = case_row.get("risk_score")
+
         risk_score = float(raw_risk_score) if pd_not_na(raw_risk_score) else 0.50
 
         initial_state: InvestigationGraphState = {

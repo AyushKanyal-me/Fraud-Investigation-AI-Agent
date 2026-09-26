@@ -1,0 +1,52 @@
+name: TigerGraph Integration & Parity CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  tigergraph-parity-integration:
+    name: TigerGraph Parity & Query Verification
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies from pyproject.toml
+      run: |
+        python -m pip install --upgrade pip
+        pip install ".[dev]"
+
+    - name: Run GSQL Normalization & Parity Mock Tests
+      env:
+        DATA_REPOSITORY_BACKEND: "tigergraph"
+        TIGERGRAPH_FALLBACK_POLICY: "fallback"
+        SIMULATION_MODE: "true"
+        API_AUTH_KEY: "tg-ci-integration-secure-key-32-chars-long"
+      run: |
+        pytest tests/test_repository_parity.py tests/test_tigergraph_parity_live.py tests/test_tigergraph_fallback.py -v
+
+    - name: Run Live TigerGraph Tests (if credentials/host provided)
+      if: env.TIGERGRAPH_HOST != ''
+      env:
+        TIGERGRAPH_HOST: ${{ secrets.TIGERGRAPH_HOST }}
+        TIGERGRAPH_RESTPP_PORT: ${{ secrets.TIGERGRAPH_RESTPP_PORT || '9000' }}
+        TIGERGRAPH_USERNAME: ${{ secrets.TIGERGRAPH_USERNAME || 'tigergraph' }}
+        TIGERGRAPH_PASSWORD: ${{ secrets.TIGERGRAPH_PASSWORD || 'tigergraph' }}
+        TIGERGRAPH_GRAPH_NAME: ${{ secrets.TIGERGRAPH_GRAPH_NAME || 'FraudGraph' }}
+        TIGERGRAPH_SECRET: ${{ secrets.TIGERGRAPH_SECRET }}
+        TIGERGRAPH_LIVE_TESTS: "true"
+        API_AUTH_KEY: "tg-ci-integration-secure-key-32-chars-long"
+      run: |
+        pytest tests/test_tigergraph_live.py tests/test_tigergraph_parity_live.py -v

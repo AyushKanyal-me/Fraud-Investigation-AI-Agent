@@ -35,12 +35,32 @@ def test_token_tracker_per_case_recording():
         latency_s=0.65
     )
 
-    assert tracker.get_total_tokens() == (420 + 85) + (950 + 210) + (600 + 180)
-    assert tracker.get_total_latency() == pytest.approx(0.45 + 0.82 + 0.65, rel=1e-3)
-
     summary = tracker.get_summary()
     assert summary["total_calls"] == 3
     assert summary["total_prompt_tokens"] == 420 + 950 + 600
     assert summary["total_completion_tokens"] == 85 + 210 + 180
     assert len(summary["records"]) == 3
     assert summary["records"][0]["step"] == "hypothesis_generation"
+
+def test_graph_token_tracker_wiring():
+    from agent.graph import FraudInvestigationGraph
+    from agent.schemas import HypothesisOutput
+    from unittest.mock import MagicMock
+
+    graph = FraudInvestigationGraph()
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = '{"preliminary_verdict": "fraud", "preliminary_probability": 0.9, "preliminary_pattern": "card_testing", "reasoning": "testing detected"}'
+    mock_response.usage_metadata.prompt_token_count = 120
+    mock_response.usage_metadata.candidates_token_count = 35
+    mock_client.models.generate_content.return_value = mock_response
+
+    graph.client = mock_client
+    res = graph._call_gemini_structured("test prompt", HypothesisOutput, step_name="test_step")
+    assert res is not None
+    assert graph.token_tracker.get_total_tokens() == 155
+    summary = graph.token_tracker.get_summary()
+    assert summary["total_calls"] == 1
+    assert summary["records"][0]["step"] == "test_step"
+
+

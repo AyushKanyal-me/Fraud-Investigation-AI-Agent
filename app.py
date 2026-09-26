@@ -34,8 +34,22 @@ from agent.policy import POLICY_VERSION
 from agent.persistence import InvestigationPersistenceManager, get_persistence_manager
 from agent.checkpoints import CheckpointStore, get_checkpoint_store
 from agent.validator import validate_case_invariants
+from agent.repository.exceptions import TigerGraphUnavailableError
 
 logger = logging.getLogger("fraud_api")
+
+# Known insecure/default keys that must never be accepted in production
+_KNOWN_INSECURE_KEYS = {
+    "tigergraph-fraud-agent-auth-key",
+    "tg-fraud-key-dev-2026",
+    "generate-a-long-random-secret-key-for-api-auth",
+    "YOUR_SECURE_RANDOM_SECRET_KEY_HERE",
+    "YOUR_API_KEY_HERE",
+    "change_me",
+    "123456",
+    "admin",
+    "secret"
+}
 
 # API Key Authentication Scheme
 API_KEY_NAME = "X-API-Key"
@@ -47,6 +61,11 @@ def verify_api_key(api_key: Optional[str] = Security(api_key_header)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="API authentication key is not configured on server."
+        )
+    if current_key in _KNOWN_INSECURE_KEYS:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Server API_AUTH_KEY is set to an insecure/placeholder default. Please configure a unique secure key."
         )
     if not api_key or api_key != current_key:
         raise HTTPException(
@@ -67,6 +86,8 @@ async def lifespan(app: FastAPI):
     auth_key = os.getenv("API_AUTH_KEY") or API_AUTH_KEY
     if not auth_key:
         logger.warning("API_AUTH_KEY is not set. All authenticated routes will reject requests.")
+    elif auth_key in _KNOWN_INSECURE_KEYS:
+        logger.critical("SECURITY ALERT: API_AUTH_KEY is configured with an insecure placeholder default! Authenticated requests will be rejected.")
     elif len(auth_key) < 16:
         logger.warning("API_AUTH_KEY is shorter than 16 characters. Consider using a stronger key in production.")
 
@@ -98,6 +119,17 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+@app.exception_handler(TigerGraphUnavailableError)
+async def tigergraph_unavailable_handler(request: Request, exc: TigerGraphUnavailableError):
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "error": "TigerGraphUnavailableError",
+            "detail": str(exc),
+            "fallback_policy": "fail_closed"
+        }
+    )
+
 # Enable Restricted CORS
 app.add_middleware(
     CORSMiddleware,
@@ -106,6 +138,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
 
 # -------------------------------------------------------------
 # Dependency Injections
@@ -156,13 +189,24 @@ class EvidenceSubmissionRequest(BaseModel):
 # 1. Health, Diagnostic & System Metrics (Read-Only)
 # -------------------------------------------------------------
 @app.get("/healthz", tags=["System"])
+def get_liveness():
+    """
+    Lightweight liveness probe for load balancers and orchestrators.
+    Guaranteed O(1) response without triggering dataset load or graph queries.
+    """
+    return {
+        "status": "healthy",
+        "agent_engine": "LangGraph StateGraph 2.0",
+        "policy_version": POLICY_VERSION
+    }
+
 @app.get("/api/health", tags=["System"])
-def get_health(
+def get_readiness(
     vs: FraudVectorStore = Depends(get_vector_store),
     mem: CaseMemory = Depends(get_memory),
     tls: GraphTools = Depends(get_tools)
 ):
-    """Returns server and subsystem health status."""
+    """Returns detailed server and subsystem readiness status without forcing full CSV dataset load."""
     return {
         "status": "healthy",
         "agent_engine": "LangGraph StateGraph 2.0",
@@ -170,8 +214,10 @@ def get_health(
         "vector_store_docs": vs.collection.count() if vs.collection else len(vs.documents),
         "memory_cases_count": len(mem.cases),
         "tigergraph_connected": tls.conn is not None,
-        "dataset_transactions_loaded": len(tls.df_txn) if getattr(tls, "df_txn", None) is not None else 0
+        "data_loaded": tls.is_data_loaded,
+        "dataset_transactions_loaded": tls.loaded_txn_count
     }
+
 
 @app.get("/api/repository/health", tags=["System"])
 def get_repository_health(tls: GraphTools = Depends(get_tools)):

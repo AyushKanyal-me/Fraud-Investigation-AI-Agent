@@ -60,6 +60,93 @@ class EvidenceSource(str, enum.Enum):
     EXTERNAL = "external"
     SIMULATOR = "simulator"
 
+# Canonical lists derived directly from enums (single-source of truth)
+PATTERNS: List[str] = [p.value for p in FraudPattern]
+ACTION_TYPES: List[str] = [a.value for a in ActionType]
+APPROVAL_ROUTES: List[str] = [r.value for r in ApprovalRoute]
+
+# Canonical Policy Rules Definition (Dataset/README.md R1-R10)
+POLICY_RULES: Dict[str, Dict[str, Any]] = {
+    "R1": {
+        "id": "R1",
+        "title": "Verify Before Blocking on Weak Signal",
+        "description": "If the case rests on a single signal (including risk score alone) and assessed fraud probability is below 0.70, recommend VERIFY_WITH_CUSTOMER or STEP_UP_AUTH before any block. Blocking a legitimate customer on one signal is a policy breach.",
+        "actions": [ActionType.VERIFY_WITH_CUSTOMER.value, ActionType.STEP_UP_AUTH.value],
+        "sar_trigger": False
+    },
+    "R2": {
+        "id": "R2",
+        "title": "Customer Denies Transaction",
+        "description": "Customer denies the transaction. Recommend BLOCK_CARD and CREATE_CASE. Add FILE_REPORT if exposure exceeds $1,000 or the case connects to a shared device profile or another card's fraud.",
+        "actions": [ActionType.BLOCK_CARD.value, ActionType.CREATE_CASE.value, ActionType.FILE_REPORT.value],
+        "sar_trigger": True
+    },
+    "R3": {
+        "id": "R3",
+        "title": "Customer Confirms Transaction",
+        "description": "Customer confirms the transaction. Recommend CLOSE_NO_FRAUD and ALLOW_TRANSACTION. Note the confirmation in the case file.",
+        "actions": [ActionType.ALLOW_TRANSACTION.value, ActionType.CLOSE_NO_FRAUD.value],
+        "sar_trigger": False
+    },
+    "R4": {
+        "id": "R4",
+        "title": "No Customer Reply Within 24 Hours",
+        "description": "No reply within 24 hours. Recommend MONITOR_CARD and DECLINE_TRANSACTION for pending authorizations. Escalate (ESCALATE_TO_ANALYST) if exposure exceeds $500.",
+        "actions": [ActionType.MONITOR_CARD.value, ActionType.DECLINE_TRANSACTION.value, ActionType.ESCALATE_TO_ANALYST.value],
+        "sar_trigger": False
+    },
+    "R5": {
+        "id": "R5",
+        "title": "Card Testing Pattern",
+        "description": "Three or more small online authorizations on one card within an hour, followed by a larger purchase: recommend DECLINE_TRANSACTION and STEP_UP_AUTH. If a purchase over $100 has already cleared, recommend BLOCK_CARD.",
+        "actions": [ActionType.DECLINE_TRANSACTION.value, ActionType.STEP_UP_AUTH.value, ActionType.BLOCK_CARD.value],
+        "sar_trigger": False
+    },
+    "R6": {
+        "id": "R6",
+        "title": "Shared Origin Across Cards",
+        "description": "When several cards show fraud from the same device profile, billing region, or recipient email in one window, name shared element, recommend CREATE_CASE, FILE_REPORT, and MONITOR_CONNECTED_CARDS for every card that shares it.",
+        "actions": [ActionType.CREATE_CASE.value, ActionType.FILE_REPORT.value, ActionType.MONITOR_CONNECTED_CARDS.value],
+        "sar_trigger": True
+    },
+    "R7": {
+        "id": "R7",
+        "title": "Disputed But Legitimate Recurring Pattern",
+        "description": "When customer disputes a charge that matches their recurring pattern (same merchant, amount, monthly), recommend CREATE_CASE, VERIFY_WITH_CUSTOMER, and WARN_CUSTOMER. Do not block. Final resolution closes as CLOSE_NO_FRAUD.",
+        "actions": [ActionType.CREATE_CASE.value, ActionType.VERIFY_WITH_CUSTOMER.value, ActionType.WARN_CUSTOMER.value, ActionType.CLOSE_NO_FRAUD.value],
+        "sar_trigger": False
+    },
+    "R8": {
+        "id": "R8",
+        "title": "Escalate When Uncertain and Exposed",
+        "description": "If verdict is uncertain and exposure exceeds $500, or evidence conflicts, recommend ESCALATE_TO_ANALYST.",
+        "actions": [ActionType.CREATE_CASE.value, ActionType.MONITOR_CARD.value, ActionType.ESCALATE_TO_ANALYST.value],
+        "sar_trigger": False
+    },
+    "R9": {
+        "id": "R9",
+        "title": "Undocumented Fraud Patterns",
+        "description": "When activity fits none of the known patterns but evidence shows coordinated or repeated abuse across customers, recommend CREATE_CASE, FILE_REPORT, and ESCALATE_TO_ANALYST, and describe pattern in own words.",
+        "actions": [ActionType.CREATE_CASE.value, ActionType.FILE_REPORT.value, ActionType.ESCALATE_TO_ANALYST.value],
+        "sar_trigger": True
+    },
+    "R10": {
+        "id": "R10",
+        "title": "Restrictions on Blocking All Cards",
+        "description": "Never BLOCK_ALL_CARDS unless at least two of customer's cards show confirmed fraud or customer's credentials are confirmed compromised.",
+        "actions": [ActionType.BLOCK_ALL_CARDS.value],
+        "sar_trigger": False
+    }
+}
+
+def generate_policy_prompt_section() -> str:
+    """Generates a formatted summary of canonical policy rules for LLM prompts."""
+    lines = ["CANONICAL POLICY RULES (R1-R10):"]
+    for rid, rdata in sorted(POLICY_RULES.items()):
+        lines.append(f"- {rdata['id']}: {rdata['title']} -> {rdata['description']}")
+    return "\n".join(lines)
+
+
 def get_action_route(action: str, exposure_usd: float = 0.0) -> str:
     """
     Returns exact approval route ('auto', 'L1', 'L2') strictly defined by Section 2:

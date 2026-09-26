@@ -99,3 +99,23 @@ def test_api_auth_success_with_valid_key():
         data = response.json()
         assert data.get("case_id") == "HHG-001"
         assert "case" in data
+
+def test_insecure_key_rejection(monkeypatch):
+    monkeypatch.setenv("API_AUTH_KEY", "tigergraph-fraud-agent-auth-key")
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/cases/HHG-001/investigate",
+            headers={"X-API-Key": "tigergraph-fraud-agent-auth-key"}
+        )
+        assert response.status_code == 500
+        assert "insecure/placeholder" in response.json()["detail"]
+
+def test_healthz_is_lightweight():
+    with TestClient(app) as client:
+        res = client.get("/healthz")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "healthy"
+        # healthz must NOT expose heavy dataset transaction loading
+        assert "dataset_transactions_loaded" not in data
+

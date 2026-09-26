@@ -157,7 +157,7 @@ A core architectural principle of this system is strict governance:
 ├── app.py                   # FastAPI backend server with CORS and auth
 ├── run_cases.py             # Batch investigation execution harness
 ├── config.py                # Configuration and environment bindings
-├── requirements.txt         # Project dependencies
+├── pyproject.toml          # Project metadata and dependencies
 ├── FRONTEND_API_CONTRACT.md # Frontend integration guide and TypeScript interfaces
 └── README.md                # System documentation
 ```
@@ -177,8 +177,8 @@ Create a `.env` file in the root directory:
 # LLM Configuration (Optional: system operates with robust fallback if unset)
 GEMINI_API_KEY=YOUR_API_KEY_HERE
 
-# API Security
-API_AUTH_KEY=tg-fraud-key-dev-2026
+# API Security (Generate a secure random key, e.g., openssl rand -hex 32)
+API_AUTH_KEY=YOUR_SECURE_RANDOM_SECRET_KEY_HERE
 AUTH_DISABLED=false
 CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
 
@@ -209,12 +209,13 @@ python -m venv .venv
 source .venv/bin/activate
 
 # 2. Install core dependencies
-pip install -r requirements.txt
+pip install ".[dev]"
 
 # 3. Optional: Install PostgreSQL checkpoint storage extra
 pip install -e .[postgres]
 # Or directly: pip install psycopg2-binary
 ```
+
 
 ### Docker Deployment
 You can deploy the complete agent as a containerized service:

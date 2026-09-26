@@ -20,8 +20,9 @@ services:
       - DATA_REPOSITORY_BACKEND=${DATA_REPOSITORY_BACKEND:-local}
       - CHECKPOINT_BACKEND=${CHECKPOINT_BACKEND:-sqlite}
       - SIMULATION_MODE=${SIMULATION_MODE:-false}
-      - API_AUTH_KEY=${API_AUTH_KEY:-tigergraph-fraud-agent-auth-key}
+      - API_AUTH_KEY=${API_AUTH_KEY}
     volumes:
+
       - ./logs:/app/logs
       - ./memory:/app/memory
       - ./checkpoints:/app/checkpoints

@@ -29,6 +29,20 @@ class GraphTools:
         return getattr(self.repo, "conn", None)
 
     @property
+    def is_data_loaded(self) -> bool:
+        """Returns True if repository data is already loaded in memory, without forcing a load."""
+        if hasattr(self.repo, "is_loaded"):
+            return bool(getattr(self.repo, "is_loaded", False))
+        df = getattr(self.repo, "df_txn", None)
+        return df is not None and len(df) > 0
+
+    @property
+    def loaded_txn_count(self) -> int:
+        """Returns count of loaded transactions if already in memory, without forcing a load."""
+        df = getattr(self.repo, "df_txn", None)
+        return len(df) if df is not None else 0
+
+    @property
     def df_txn(self):
         if hasattr(self.repo, "_ensure_loaded"):
             self.repo._ensure_loaded()
@@ -46,6 +60,7 @@ class GraphTools:
         if hasattr(self.repo, "_ensure_loaded"):
             self.repo._ensure_loaded()
         return getattr(self.repo, "df_closed", None)
+
 
     def get_transaction_detail(self, txn_id: str) -> Dict[str, Any]:
         """Fetches complete transaction record including identity metadata."""
