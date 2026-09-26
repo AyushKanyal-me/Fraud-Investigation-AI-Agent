@@ -1,6 +1,6 @@
 # Agentic Fraud Investigation System
 
-An enterprise-grade, autonomous AI fraud investigation and policy governance engine. The system automates the end-to-end investigation lifecycle for banking transactions by combining multi-hop knowledge graph analysis, dynamic tool-driven reasoning via LangGraph, GraphRAG regulatory retrieval, behavioral customer simulation, and automated FinCEN Suspicious Activity Report (SAR) narrative generation.
+An enterprise-grade, autonomous AI fraud investigation and policy governance engine. The system automates the end-to-end investigation lifecycle for banking transactions by combining multi-hop knowledge graph analysis, dynamic tool-driven reasoning via LangGraph, GraphRAG regulatory retrieval, behavioral customer simulation, real-time token observability, and automated FinCEN Suspicious Activity Report (SAR) narrative generation.
 
 ---
 
@@ -18,18 +18,26 @@ This system acts as an autonomous AI investigator operating under strict banking
 - **Time-Bounded Historical Baselines:** Evaluates 30-day customer spending baselines strictly prior to the alert timestamp, eliminating lookahead bias.
 - **Temporal Episode Expansion:** Groups burst authorizations, velocity spikes, and micro-authorization card testing sequences ($<$\$15) within sliding time windows.
 - **Hardware Profile & Ring Detection:** Identifies shared device fingerprints (OS, browser, hardware profiles) across multiple distinct card accounts within 7-day lookbacks.
+- **Enterprise TigerGraph Parity:** Seamless graph analytics backed by native GSQL queries with deterministic response normalization and fallback resilience.
 
 ### LangGraph Multi-Agent Orchestrator
 - **Stateful Cognitive Pipeline:** Operates a 9-stage finite state graph managing evidence collection, hypothesis generation, risk calibration, policy evaluation, and audit logging.
 - **Explainability Traces:** Captures step-by-step agent reasoning at each transition, providing an audit trail for risk and compliance officers.
+- **Real-Time Token Accounting:** Integrates native LLM token usage tracking (`agent/token_tracker.py`) capturing exact prompt, candidate, and total token consumption per node.
 
 ### GraphRAG Policy Retrieval
 - **ChromaDB Vector Store:** Indexes banking policy rules (R1–R10), known fraud pattern typologies, historical closed cases, and FinCEN SAR regulatory guidance.
 - **Active Context Retrieval:** Dynamically queries policy precedents and regulatory thresholds during case assessment to ground decisions.
 
-### Behavioral Customer & 2FA Simulator
-- **Dynamic Persona Simulation:** Uses contextual LLM prompts to simulate cardholder responses to SMS fraud alerts and 2FA step-up challenges rather than using static rules.
-- **Outcome Classification:** Classifies cardholder replies into structured states (`CONFIRMED_LEGITIMATE`, `DENIED_UNAUTHORIZED`, `RECURRING_DISPUTE`, `STEP_UP_FAILED`).
+### Multi-Typology Evidence Classification & Customer Simulator
+- **Multi-Typology Evidence Classifier (`agent/evidence_classifier.py`):** Negation-aware regex rule engine with semantic LLM fallback for robust classification of customer communications into structured states:
+  - `CONFIRMED_LEGITIMATE`
+  - `DENIED_UNAUTHORIZED`
+  - `RECURRING_DISPUTE`
+  - `NO_REPLY_24H`
+  - `STEP_UP_PASSED`
+  - `STEP_UP_FAILED`
+- **Dynamic Persona Simulation:** Uses contextual LLM prompts to simulate cardholder responses to SMS fraud alerts and 2FA step-up challenges rather than static mock rules.
 
 ### Regulatory Compliance & SAR Narrative Synthesis
 - **FinCEN 5 Ws and H Standard:** Generates complete, self-contained SAR narratives answering Who, What, When, Where, How, and Why.
@@ -40,7 +48,8 @@ This system acts as an autonomous AI investigator operating under strict banking
 - **Cross-Case Memory:** Tracks compromised cards, repeat offender devices, and suspicious email domains across investigation lifecycles.
 
 ### REST API & Interactive Visualizer
-- **FastAPI Backend:** Provides REST endpoints for alert queues, case details, live on-demand investigation triggers, and dashboard KPI metrics.
+- **FastAPI Backend:** Provides REST endpoints for alert queues, case details, live on-demand investigation triggers, asynchronous evidence submission, and dashboard KPI metrics.
+- **Lightweight Liveness & Diagnostic Readiness:** Fast $O(1)$ `/healthz` probe without heavy dataset loading alongside deep `/api/health` diagnostic subsystem checks.
 - **Graph Visualization Subgraphs:** Emits node-link payloads compatible with Cytoscape.js, Vis.js, and D3.js.
 
 ---
@@ -87,7 +96,7 @@ The investigation lifecycle is governed by a compiled LangGraph state machine:
 
 ## 4. Bank Fraud Policy & Governance (Rules R1–R10)
 
-The agent operates strictly within the bank's policy rules:
+The agent operates strictly within the bank's policy rules, defined centrally in [`agent/policy.py`](file:///agent/policy.py) as the single source of truth for all evaluators, prompt generators, and API endpoints:
 
 | Rule | Title | Condition | Permitted Actions |
 | :--- | :--- | :--- | :--- |
@@ -114,10 +123,10 @@ The agent operates strictly within the bank's policy rules:
 A core architectural principle of this system is strict governance:
 - **Authoritative Deterministic Layer (`agent/policy.py`, `agent/validator.py`):**
   - All decisions regarding actions, approval routes (`auto`, `L1`, `L2`), exposure calculation, and SAR filing mandates are 100% deterministic and strictly evaluated by code based on Rules R1–R10.
-  - LLMs **never** determine whether a case is blocked, whether a SAR is filed, or which approval route is required.
+  - LLMs **never** determine whether a card is blocked, whether a SAR is filed, or which approval route is required.
   - Invariant validators strictly guarantee compliance with banking policy.
-- **LLM Assistance Layer (`agent/graph.py`, `agent/prompts.py`, `agent/schemas.py`):**
-  - LLMs are utilized strictly for auxiliary cognitive tasks: formulating initial hypotheses, simulating realistic customer SMS/2FA dialogues, and drafting narrative explanations for SAR filings.
+- **LLM Assistance Layer (`agent/graph.py`, `agent/prompts.py`, `agent/schemas.py`, `agent/evidence_classifier.py`):**
+  - LLMs are utilized strictly for auxiliary cognitive tasks: formulating initial hypotheses, simulating realistic customer SMS/2FA dialogues, classifying ambiguous unstructured responses, and drafting narrative explanations for SAR filings.
   - All structured LLM claims are grounded and validated against verified graph evidence.
 
 ---
@@ -127,39 +136,51 @@ A core architectural principle of this system is strict governance:
 ```
 .
 ├── agent/
-│   ├── graph.py             # LangGraph StateGraph engine (9 state nodes)
-│   ├── workflow.py          # Unified workflow orchestrator
-│   ├── tools.py             # Graph analytics tools (baseline, episode, device rings)
-│   ├── repository/          # Repository abstraction (Local & TigerGraph backends)
-│   ├── policy.py            # Canonical rule evaluator & approval router (R1-R10)
-│   ├── validator.py         # Invariant & schema validator
-│   ├── simulator.py         # Customer dialogue & 2FA simulator
-│   ├── checkpoints.py       # Durable state checkpoint store
-│   ├── persistence.py       # Atomic file storage & audit logging
-│   └── card_identity.py     # Canonical card mapping engine
+│   ├── graph.py               # LangGraph StateGraph engine (9 state nodes)
+│   ├── workflow.py            # Unified workflow orchestrator
+│   ├── tools.py               # Graph analytics tools (baseline, episode, device rings)
+│   ├── policy.py              # Single-source canonical rule evaluator (R1–R10)
+│   ├── evidence_classifier.py # Multi-typology classification (negation regex + LLM fallback)
+│   ├── token_tracker.py       # Real token accounting and usage telemetry
+│   ├── validator.py           # Invariant & schema validator
+│   ├── simulator.py           # Customer dialogue & 2FA simulator
+│   ├── checkpoints.py         # Durable state checkpoint store (SQLite/PostgreSQL/File)
+│   ├── persistence.py         # Atomic file storage & audit logging
+│   ├── card_identity.py       # Canonical card mapping engine
+│   └── repository/            # Data repository (Local pandas & TigerGraph backends)
 ├── rag/
-│   ├── vector_store.py      # ChromaDB vector store for GraphRAG
-│   └── chroma_db/           # Persistent vector embeddings
+│   ├── vector_store.py        # ChromaDB vector store for GraphRAG
+│   └── chroma_db/             # Persistent vector embeddings
 ├── memory/
-│   ├── case_memory.py       # Cross-case working memory
-│   └── case_memory.json     # Working memory storage
+│   ├── case_memory.py         # Cross-case working memory
+│   └── case_memory.json       # Working memory storage
 ├── schema/
-│   ├── create_schema.gsql   # TigerGraph vertex and edge schema definitions
-│   └── setup_schema.py      # Schema deployment script
+│   ├── create_schema.gsql     # TigerGraph vertex and edge schema definitions
+│   └── setup_schema.py        # Schema deployment script
 ├── queries/
-│   └── *.gsql               # GSQL analytical queries for graph traversal
+│   └── *.gsql                 # GSQL analytical queries for graph traversal
 ├── data_loading/
-│   ├── load_data.py         # Dataset ingestion pipeline
-│   └── build_next_edges.py  # Temporal transaction edge builder
-├── answers/                 # Generated investigation JSON artifacts
-├── cases/                   # Internal investigation state records
-├── tests/                   # Comprehensive offline test suite (Unit & Integration)
-├── app.py                   # FastAPI backend server with CORS and auth
-├── run_cases.py             # Batch investigation execution harness
-├── config.py                # Configuration and environment bindings
-├── pyproject.toml          # Project metadata and dependencies
-├── FRONTEND_API_CONTRACT.md # Frontend integration guide and TypeScript interfaces
-└── README.md                # System documentation
+│   ├── load_data.py           # Dataset ingestion pipeline
+│   └── build_next_edges.py    # Temporal transaction edge builder
+├── answers/                   # Generated investigation JSON artifacts
+├── cases/                     # Internal investigation state records
+├── tests/                     # Unit & Integration test suite
+│   ├── test_policy.py         # Policy R1-R10 test suite
+│   ├── test_evidence_classifier.py # Evidence classifier unit tests
+│   ├── test_token_tracker.py  # Token accounting unit tests
+│   ├── test_tigergraph_parity.py   # TigerGraph mock response normalization tests
+│   └── test_tigergraph_parity_live.py # Live TigerGraph integration tests
+├── .github/workflows/         # CI/CD workflows
+│   ├── ci.yml                 # Core test suite on push/PR
+│   └── integration.yml        # Live TigerGraph integration test workflow
+├── app.py                     # FastAPI backend server with CORS and auth
+├── run_cases.py               # Batch investigation execution harness
+├── config.py                  # Configuration, security validations, and env bindings
+├── pyproject.toml            # Unified project metadata and dependencies
+├── docker-compose.yml         # Container orchestration configuration
+├── Dockerfile                 # Production container image
+├── FRONTEND_API_CONTRACT.md   # Frontend integration guide and TypeScript interfaces
+└── README.md                  # System documentation
 ```
 
 ---
@@ -168,14 +189,14 @@ A core architectural principle of this system is strict governance:
 
 ### Prerequisites
 - Python 3.10, 3.11, or 3.12
-- TigerGraph (Savanna cloud instance or local Community Edition)
+- TigerGraph (Cloud instance or local Community Edition)
 
 ### Environment Configuration
-Create a `.env` file in the root directory:
+Create a `.env` file in the root directory (refer to `.env.example`):
 
 ```bash
-# LLM Configuration (Optional: system operates with robust fallback if unset)
-GEMINI_API_KEY=YOUR_API_KEY_HERE
+# LLM Configuration
+GEMINI_API_KEY=YOUR_GEMINI_API_KEY_HERE
 
 # API Security (Generate a secure random key, e.g., openssl rand -hex 32)
 API_AUTH_KEY=YOUR_SECURE_RANDOM_SECRET_KEY_HERE
@@ -191,6 +212,7 @@ TIGERGRAPH_PASSWORD=tigergraph
 TIGERGRAPH_GRAPH_NAME=FraudGraph
 TIGERGRAPH_SECRET=
 TIGERGRAPH_API_TOKEN=
+TIGERGRAPH_FALLBACK_POLICY=fallback
 
 # Directory Settings
 DATASET_DIR=Dataset
@@ -202,20 +224,22 @@ AUDIT_LOG_DIR=logs
 MEMORY_FILE=memory/case_memory.json
 ```
 
+> **Security Note:** The server validates `API_AUTH_KEY` at startup to prevent running with known insecure default keys (e.g. `change-me-in-production`, `secret`, `123456`). Always set a secure random key.
+
 ### Installation
+All dependencies are unified in `pyproject.toml`:
+
 ```bash
 # 1. Create and activate virtual environment
 python -m venv .venv
 source .venv/bin/activate
 
-# 2. Install core dependencies
+# 2. Install package in editable mode with development dependencies
 pip install ".[dev]"
 
 # 3. Optional: Install PostgreSQL checkpoint storage extra
 pip install -e .[postgres]
-# Or directly: pip install psycopg2-binary
 ```
-
 
 ### Docker Deployment
 You can deploy the complete agent as a containerized service:
@@ -242,34 +266,39 @@ curl http://localhost:8000/healthz
 | `DATA_REPOSITORY_BACKEND` | `tigergraph` | `tigergraph` or `local` |
 | `CHECKPOINT_BACKEND` | `sqlite` | `sqlite`, `postgres`, or `file` |
 | `SIMULATION_MODE` | `false` | `true` for offline mock execution; `false` for live LLM calls |
-| `API_AUTH_KEY` | *(required)* | Bearer/Header token for API access (`X-API-Key`) |
+| `API_AUTH_KEY` | *(required)* | Header/Bearer token for API access (`X-API-Key`) |
+| `AUTH_DISABLED` | `false` | Set to `true` strictly during local development testing to bypass auth |
 
 ---
 
 ## 8. Architecture Decision Records (ADRs)
 
-### ADR-1: Deterministic Policy Shortcuts with Opt-In LLM Enrichment
-- **Context:** Banking compliance mandates 100% reproducible, predictable policy routing across known typologies (R1–R10). Unconstrained LLMs can exhibit stochastic drift on core threshold decisions.
-- **Decision:** Use deterministic, validated policy rule evaluators as the core decision backbone. Provide `LLM_ENHANCED_ASSESSMENT=true` as an opt-in enrichment layer that synthesizes natural language hypotheses and reasoning without compromising invariant guarantees.
+### ADR-1: Deterministic Policy Engine Single-Source Definition
+- **Context:** Banking compliance mandates 100% reproducible, predictable policy routing across known typologies (R1–R10). Having policy descriptions duplicated across prompts, validators, and endpoints leads to divergence.
+- **Decision:** Centrally define rules, conditions, action maps, and approval requirements in `agent/policy.py`. All state nodes, validator invariants, and prompt templates dynamically derive from this single source of truth.
 
-### ADR-2: TigerGraph Fail-Closed vs Fallback Policy
-- **Context:** Development and CI environments often lack a live TigerGraph cluster and rely on local parquet/CSV datasets. Production banking systems, however, must ensure that graph-native queries are executed against the enterprise graph without silent fallback.
+### ADR-2: Multi-Typology Evidence Classification with Negation Handling
+- **Context:** Customer responses often contain complex phrasings (e.g. "No, this was not me", "I never bought this", "I did this"). Simple keyword substring matching misclassifies negated statements.
+- **Decision:** Implement `agent/evidence_classifier.py` using prioritized, negation-aware regex rules covering multiple typologies with optional LLM fallback for ambiguous text, and fail-safe non-blocking defaults (`NO_REPLY_24H` / `UNCERTAIN`).
+
+### ADR-3: Native Token Usage Accounting
+- **Context:** Estimating token usage with fixed character multipliers produces inaccurate audit trails.
+- **Decision:** Implement `agent/token_tracker.py` to extract real token metrics directly from provider metadata (`usage_metadata.prompt_token_count`, `candidates_token_count`, `total_token_count`) and LangChain callbacks, recording token consumption per investigation node.
+
+### ADR-4: Fast Liveness vs Deep Subsystem Readiness
+- **Context:** Orchestrators (Kubernetes/ECS) require frequent liveness probes (`/healthz`) that must return in $< 10\text{ms}$ without triggering heavy ~600k row dataset loads into memory.
+- **Decision:** Decouple `/healthz` ($O(1)$ instant check) from `/api/health` (deep readiness probe verifying TigerGraph, ChromaDB vector indices, and case memory).
+
+### ADR-5: TigerGraph Fail-Closed vs Fallback Policy
+- **Context:** CI and local testing frequently operate without live graph infrastructure, whereas production banking environments mandate graph-native execution without silent fallbacks.
 - **Decision:** Configure `TIGERGRAPH_FALLBACK_POLICY`. Default to `fallback` in development/CI and `fail_closed` in production, raising `TigerGraphUnavailableError` upon connection failure.
-
-### ADR-3: Lazy Loading for High-Volume In-Memory Repository
-- **Context:** The transaction dataset contains ~600k rows. Eagerly reading CSVs upon class instantiation introduces unnecessary startup latency and memory overhead for lightweight requests (e.g. `/healthz`).
-- **Decision:** Implement lazy loading (`_ensure_loaded()`) that defers CSV index construction until the first repository query is invoked.
-
-### ADR-4: Checkpoint-Driven Asynchronous Evidence Submission
-- **Context:** In human-in-the-loop workflows, cases requiring step-up authentication or customer confirmation must pause and persist in-flight state.
-- **Decision:** Persist full state snapshots in `CheckpointStore` (`sqlite`, `postgres`, or `file`). Resuming via `/cases/{case_id}/evidence/submit` validates and loads the exact checkpoint state before executing final disposition.
 
 ---
 
-## 9. Execution Guide
+## 9. Execution & Testing Guide
 
 ### Running Batch Case Investigations
-To execute the complete LangGraph investigation workflow across all test cases:
+To execute the complete LangGraph investigation workflow across all cases:
 
 ```bash
 python run_cases.py
@@ -278,8 +307,9 @@ This will:
 1. Initialize the ChromaDB GraphRAG vector store.
 2. Index dataset transactions with canonical card mappings.
 3. Execute the 9-node LangGraph agent for each case.
-4. Run semantic and policy validation on the outputs.
-5. Persist JSON deliverables into `answers/` and `cases/`.
+4. Record exact token usage per investigation node.
+5. Run semantic and policy validation on the outputs.
+6. Persist JSON deliverables into `answers/` and `cases/`.
 
 ### Starting the FastAPI Server
 To start the REST API for the frontend dashboard:
@@ -291,24 +321,38 @@ uvicorn app:app --reload --port 8000
 - **Swagger Documentation:** `http://localhost:8000/docs`
 - **OpenAPI Schema:** `http://localhost:8000/openapi.json`
 
+### Running the Test Suite
+```bash
+# Run all unit tests
+pytest
+
+# Run tests with coverage
+pytest --cov=agent --cov-report=term-missing
+
+# Run live TigerGraph integration tests (requires live TigerGraph instance)
+RUN_TIGERGRAPH_LIVE_TESTS=true pytest tests/test_tigergraph_parity_live.py
+```
+
 ---
 
-## 8. REST API Endpoints
+## 10. REST API Endpoints
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/health` | Subsystem health check (TigerGraph, ChromaDB, Memory) |
+| `GET` | `/healthz` | Lightweight $O(1)$ liveness check for orchestrators |
+| `GET` | `/api/health` | Deep diagnostic subsystem health check (TigerGraph, ChromaDB, Memory) |
 | `GET` | `/api/stats` | Executive KPI summary metrics across all cases |
 | `GET` | `/api/cases` | Case inbox listing with filtering (`?status=fraud\|legitimate\|uncertain`) |
 | `GET` | `/api/cases/{case_id}` | Full case investigation JSON detail |
 | `POST` | `/api/cases/{case_id}/investigate` | Trigger real-time LangGraph investigation |
+| `POST` | `/api/cases/{case_id}/evidence/submit` | Submit human-in-the-loop evidence / resume investigation from checkpoint |
 | `POST` | `/api/investigate/custom` | Investigate an ad-hoc custom transaction alert |
 | `GET` | `/api/graph/{case_id}` | Node-link graph for interactive network visualizers (Cytoscape/D3) |
-| `GET` | `/api/policies` | Policy rules (R1–R10) and approval routes |
+| `GET` | `/api/policies` | Policy rules (R1–R10), approval routes, and metadata |
 
 ---
 
-## 9. Frontend Integration & Graph Visualization
+## 11. Frontend Integration & Graph Visualization
 
 For frontend engineers building dashboards or analyst workbenches, refer to [`FRONTEND_API_CONTRACT.md`](FRONTEND_API_CONTRACT.md) for:
 - TypeScript interfaces (`CaseInvestigationResponse`, `CaseSubgraphResponse`, `PolicyAction`, `ExplainabilityStep`).
