@@ -1,0 +1,768 @@
+{
+  "timestamp": "2026-09-28T16:14:45.756556Z",
+  "total_cases": 20,
+  "confusion_matrix": {
+    "true_positives": 16,
+    "false_positives": 0,
+    "true_negatives": 4,
+    "false_negatives": 0,
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1_score": 1.0,
+    "specificity": 1.0
+  },
+  "pattern_match_rate": 1.0,
+  "mean_action_jaccard": 1.0,
+  "critical_action_recall": 1.0,
+  "sar_filing_accuracy": 1.0,
+  "sar_policy_adherence_rate": 1.0,
+  "exposure_mae": 1.5,
+  "exposure_mean_relative_error": 0.0099,
+  "policy_compliance_rate": 1.0,
+  "determinism_rate": 100.0,
+  "dimension_scores": {
+    "verdict_accuracy_score": 100.0,
+    "pattern_identification_score": 100.0,
+    "action_alignment_score": 100.0,
+    "sar_compliance_score": 100.0,
+    "exposure_accuracy_score": 98.01,
+    "policy_compliance_score": 100.0,
+    "determinism_score": 100.0
+  },
+  "composite_score": {
+    "total_score": 99.8,
+    "is_passing": true,
+    "passing_threshold": 85.0,
+    "dimension_breakdown": {
+      "verdict_accuracy_score": 100.0,
+      "pattern_identification_score": 100.0,
+      "action_alignment_score": 100.0,
+      "sar_compliance_score": 100.0,
+      "exposure_accuracy_score": 98.01,
+      "policy_compliance_score": 100.0,
+      "determinism_score": 100.0
+    },
+    "weights": {
+      "verdict_accuracy": 0.25,
+      "pattern_identification": 0.15,
+      "action_alignment": 0.2,
+      "sar_compliance": 0.15,
+      "exposure_accuracy": 0.1,
+      "policy_compliance": 0.1,
+      "determinism": 0.05
+    }
+  },
+  "case_results": [
+    {
+      "case_id": "HHG-001",
+      "verdict_correct": true,
+      "predicted_verdict": "fraud",
+      "expected_verdict": "fraud",
+      "pattern_correct": true,
+      "predicted_pattern": "out_of_region_use",
+      "expected_pattern": "out_of_region_use",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "expected_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": false,
+      "expected_sar": false,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 77.07,
+      "exposure_expected_range": [
+        70.0,
+        85.0
+      ],
+      "exposure_absolute_error": 0.43,
+      "exposure_relative_error": 0.0055,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 0.9994
+    },
+    {
+      "case_id": "HHG-002",
+      "verdict_correct": true,
+      "predicted_verdict": "fraud",
+      "expected_verdict": "fraud",
+      "pattern_correct": true,
+      "predicted_pattern": "card_not_present_fraud",
+      "expected_pattern": "card_not_present_fraud",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "expected_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": false,
+      "expected_sar": false,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 292.36,
+      "exposure_expected_range": [
+        280.0,
+        305.0
+      ],
+      "exposure_absolute_error": 0.14,
+      "exposure_relative_error": 0.0005,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 1.0
+    },
+    {
+      "case_id": "HHG-003",
+      "verdict_correct": true,
+      "predicted_verdict": "legitimate",
+      "expected_verdict": "legitimate",
+      "pattern_correct": true,
+      "predicted_pattern": "none",
+      "expected_pattern": "none",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "ALLOW_TRANSACTION",
+        "CLOSE_NO_FRAUD"
+      ],
+      "expected_actions": [
+        "ALLOW_TRANSACTION",
+        "CLOSE_NO_FRAUD"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": false,
+      "expected_sar": false,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 0.0,
+      "exposure_expected_range": [
+        0.0,
+        0.0
+      ],
+      "exposure_absolute_error": 0.0,
+      "exposure_relative_error": 0.0,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 1.0
+    },
+    {
+      "case_id": "HHG-004",
+      "verdict_correct": true,
+      "predicted_verdict": "fraud",
+      "expected_verdict": "fraud",
+      "pattern_correct": true,
+      "predicted_pattern": "card_not_present_fraud",
+      "expected_pattern": "card_not_present_fraud",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "expected_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": false,
+      "expected_sar": false,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 128.33,
+      "exposure_expected_range": [
+        120.0,
+        140.0
+      ],
+      "exposure_absolute_error": 1.67,
+      "exposure_relative_error": 0.0128,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 0.9987
+    },
+    {
+      "case_id": "HHG-005",
+      "verdict_correct": true,
+      "predicted_verdict": "fraud",
+      "expected_verdict": "fraud",
+      "pattern_correct": true,
+      "predicted_pattern": "card_not_present_fraud",
+      "expected_pattern": "card_not_present_fraud",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "expected_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": false,
+      "expected_sar": false,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 100.07,
+      "exposure_expected_range": [
+        95.0,
+        110.0
+      ],
+      "exposure_absolute_error": 2.43,
+      "exposure_relative_error": 0.0237,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 0.9976
+    },
+    {
+      "case_id": "HHG-006",
+      "verdict_correct": true,
+      "predicted_verdict": "fraud",
+      "expected_verdict": "fraud",
+      "pattern_correct": true,
+      "predicted_pattern": "card_not_present_fraud",
+      "expected_pattern": "card_not_present_fraud",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "expected_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": false,
+      "expected_sar": false,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 482.12,
+      "exposure_expected_range": [
+        470.0,
+        495.0
+      ],
+      "exposure_absolute_error": 0.38,
+      "exposure_relative_error": 0.0008,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 0.9999
+    },
+    {
+      "case_id": "HHG-007",
+      "verdict_correct": true,
+      "predicted_verdict": "fraud",
+      "expected_verdict": "fraud",
+      "pattern_correct": true,
+      "predicted_pattern": "card_not_present_fraud",
+      "expected_pattern": "card_not_present_fraud",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "expected_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": false,
+      "expected_sar": false,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 111.92,
+      "exposure_expected_range": [
+        105.0,
+        120.0
+      ],
+      "exposure_absolute_error": 0.58,
+      "exposure_relative_error": 0.0052,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 0.9995
+    },
+    {
+      "case_id": "HHG-008",
+      "verdict_correct": true,
+      "predicted_verdict": "fraud",
+      "expected_verdict": "fraud",
+      "pattern_correct": true,
+      "predicted_pattern": "out_of_region_use",
+      "expected_pattern": "out_of_region_use",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "expected_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": false,
+      "expected_sar": false,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 55.68,
+      "exposure_expected_range": [
+        50.0,
+        65.0
+      ],
+      "exposure_absolute_error": 1.82,
+      "exposure_relative_error": 0.0317,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 0.9968
+    },
+    {
+      "case_id": "HHG-009",
+      "verdict_correct": true,
+      "predicted_verdict": "fraud",
+      "expected_verdict": "fraud",
+      "pattern_correct": true,
+      "predicted_pattern": "out_of_region_use",
+      "expected_pattern": "out_of_region_use",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "expected_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": false,
+      "expected_sar": false,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 30.02,
+      "exposure_expected_range": [
+        25.0,
+        35.0
+      ],
+      "exposure_absolute_error": 0.02,
+      "exposure_relative_error": 0.0007,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 0.9999
+    },
+    {
+      "case_id": "HHG-010",
+      "verdict_correct": true,
+      "predicted_verdict": "fraud",
+      "expected_verdict": "fraud",
+      "pattern_correct": true,
+      "predicted_pattern": "card_not_present_fraud",
+      "expected_pattern": "card_not_present_fraud",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE",
+        "FILE_REPORT"
+      ],
+      "expected_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE",
+        "FILE_REPORT"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": true,
+      "expected_sar": true,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 1000.03,
+      "exposure_expected_range": [
+        990.0,
+        1050.0
+      ],
+      "exposure_absolute_error": 19.97,
+      "exposure_relative_error": 0.0196,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 0.998
+    },
+    {
+      "case_id": "HHG-011",
+      "verdict_correct": true,
+      "predicted_verdict": "fraud",
+      "expected_verdict": "fraud",
+      "pattern_correct": true,
+      "predicted_pattern": "card_testing",
+      "expected_pattern": "card_testing",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE",
+        "FILE_REPORT",
+        "MONITOR_CONNECTED_CARDS"
+      ],
+      "expected_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE",
+        "FILE_REPORT",
+        "MONITOR_CONNECTED_CARDS"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": true,
+      "expected_sar": true,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 204.49,
+      "exposure_expected_range": [
+        180.0,
+        230.0
+      ],
+      "exposure_absolute_error": 0.51,
+      "exposure_relative_error": 0.0025,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 0.9998
+    },
+    {
+      "case_id": "HHG-012",
+      "verdict_correct": true,
+      "predicted_verdict": "fraud",
+      "expected_verdict": "fraud",
+      "pattern_correct": true,
+      "predicted_pattern": "out_of_region_use",
+      "expected_pattern": "out_of_region_use",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "expected_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": false,
+      "expected_sar": false,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 30.91,
+      "exposure_expected_range": [
+        25.0,
+        35.0
+      ],
+      "exposure_absolute_error": 0.91,
+      "exposure_relative_error": 0.0303,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 0.997
+    },
+    {
+      "case_id": "HHG-013",
+      "verdict_correct": true,
+      "predicted_verdict": "fraud",
+      "expected_verdict": "fraud",
+      "pattern_correct": true,
+      "predicted_pattern": "out_of_region_use",
+      "expected_pattern": "out_of_region_use",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "expected_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": false,
+      "expected_sar": false,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 35.66,
+      "exposure_expected_range": [
+        30.0,
+        40.0
+      ],
+      "exposure_absolute_error": 0.66,
+      "exposure_relative_error": 0.0189,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 0.9981
+    },
+    {
+      "case_id": "HHG-014",
+      "verdict_correct": true,
+      "predicted_verdict": "fraud",
+      "expected_verdict": "fraud",
+      "pattern_correct": true,
+      "predicted_pattern": "account_takeover",
+      "expected_pattern": "account_takeover",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE",
+        "FILE_REPORT",
+        "MONITOR_CONNECTED_CARDS"
+      ],
+      "expected_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE",
+        "FILE_REPORT",
+        "MONITOR_CONNECTED_CARDS"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": true,
+      "expected_sar": true,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 74.96,
+      "exposure_expected_range": [
+        65.0,
+        85.0
+      ],
+      "exposure_absolute_error": 0.04,
+      "exposure_relative_error": 0.0005,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 0.9999
+    },
+    {
+      "case_id": "HHG-015",
+      "verdict_correct": true,
+      "predicted_verdict": "fraud",
+      "expected_verdict": "fraud",
+      "pattern_correct": true,
+      "predicted_pattern": "out_of_region_use",
+      "expected_pattern": "out_of_region_use",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "expected_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": false,
+      "expected_sar": false,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 599.94,
+      "exposure_expected_range": [
+        580.0,
+        620.0
+      ],
+      "exposure_absolute_error": 0.06,
+      "exposure_relative_error": 0.0001,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 1.0
+    },
+    {
+      "case_id": "HHG-016",
+      "verdict_correct": true,
+      "predicted_verdict": "fraud",
+      "expected_verdict": "fraud",
+      "pattern_correct": true,
+      "predicted_pattern": "card_not_present_new_device",
+      "expected_pattern": "card_not_present_new_device",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "expected_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": false,
+      "expected_sar": false,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 59.67,
+      "exposure_expected_range": [
+        50.0,
+        70.0
+      ],
+      "exposure_absolute_error": 0.33,
+      "exposure_relative_error": 0.0055,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 0.9994
+    },
+    {
+      "case_id": "HHG-017",
+      "verdict_correct": true,
+      "predicted_verdict": "legitimate",
+      "expected_verdict": "legitimate",
+      "pattern_correct": true,
+      "predicted_pattern": "none",
+      "expected_pattern": "none",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "ALLOW_TRANSACTION",
+        "CLOSE_NO_FRAUD"
+      ],
+      "expected_actions": [
+        "ALLOW_TRANSACTION",
+        "CLOSE_NO_FRAUD"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": false,
+      "expected_sar": false,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 0.0,
+      "exposure_expected_range": [
+        0.0,
+        0.0
+      ],
+      "exposure_absolute_error": 0.0,
+      "exposure_relative_error": 0.0,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 1.0
+    },
+    {
+      "case_id": "HHG-018",
+      "verdict_correct": true,
+      "predicted_verdict": "legitimate",
+      "expected_verdict": "legitimate",
+      "pattern_correct": true,
+      "predicted_pattern": "none",
+      "expected_pattern": "none",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "ALLOW_TRANSACTION",
+        "CLOSE_NO_FRAUD"
+      ],
+      "expected_actions": [
+        "ALLOW_TRANSACTION",
+        "CLOSE_NO_FRAUD"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": false,
+      "expected_sar": false,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 0.0,
+      "exposure_expected_range": [
+        0.0,
+        0.0
+      ],
+      "exposure_absolute_error": 0.0,
+      "exposure_relative_error": 0.0,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 1.0
+    },
+    {
+      "case_id": "HHG-019",
+      "verdict_correct": true,
+      "predicted_verdict": "fraud",
+      "expected_verdict": "fraud",
+      "pattern_correct": true,
+      "predicted_pattern": "card_not_present_fraud",
+      "expected_pattern": "card_not_present_fraud",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "expected_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": false,
+      "expected_sar": false,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 99.92,
+      "exposure_expected_range": [
+        90.0,
+        110.0
+      ],
+      "exposure_absolute_error": 0.08,
+      "exposure_relative_error": 0.0008,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 0.9999
+    },
+    {
+      "case_id": "HHG-020",
+      "verdict_correct": true,
+      "predicted_verdict": "legitimate",
+      "expected_verdict": "legitimate",
+      "pattern_correct": true,
+      "predicted_pattern": "none",
+      "expected_pattern": "none",
+      "action_jaccard": 1.0,
+      "critical_actions_hit": true,
+      "predicted_actions": [
+        "ALLOW_TRANSACTION",
+        "CLOSE_NO_FRAUD"
+      ],
+      "expected_actions": [
+        "ALLOW_TRANSACTION",
+        "CLOSE_NO_FRAUD"
+      ],
+      "sar_decision_correct": true,
+      "predicted_sar": false,
+      "expected_sar": false,
+      "sar_policy_compliant": true,
+      "sar_narrative_valid": true,
+      "exposure_predicted": 0.0,
+      "exposure_expected_range": [
+        0.0,
+        0.0
+      ],
+      "exposure_absolute_error": 0.0,
+      "exposure_relative_error": 0.0,
+      "policy_compliant": true,
+      "approval_routes_valid": true,
+      "schema_valid": true,
+      "overall_case_score": 1.0
+    }
+  ]
+}

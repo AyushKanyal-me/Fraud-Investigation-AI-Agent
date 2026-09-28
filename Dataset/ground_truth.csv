@@ -1,0 +1,21 @@
+case_id,expected_verdict,expected_pattern,expected_actions,expected_sar_required,expected_min_exposure,expected_max_exposure,critical_actions,source_notes
+HHG-001,fraud,out_of_region_use,BLOCK_CARD|CREATE_CASE,False,70.0,85.0,BLOCK_CARD,Out-of-region card use confirmed unauthorized by cardholder.
+HHG-002,fraud,card_not_present_fraud,BLOCK_CARD|CREATE_CASE,False,280.0,305.0,BLOCK_CARD,High risk CNP transaction confirmed fraudulent.
+HHG-003,legitimate,none,ALLOW_TRANSACTION|CLOSE_NO_FRAUD,False,0.0,0.0,CLOSE_NO_FRAUD,Cardholder verified transaction was authorized upon follow-up.
+HHG-004,fraud,card_not_present_fraud,BLOCK_CARD|CREATE_CASE,False,120.0,140.0,BLOCK_CARD,Customer dispute confirmed unauthorized online purchase.
+HHG-005,fraud,card_not_present_fraud,BLOCK_CARD|CREATE_CASE,False,95.0,110.0,BLOCK_CARD,Risk score alert confirmed unauthorized card use.
+HHG-006,fraud,card_not_present_fraud,BLOCK_CARD|CREATE_CASE,False,470.0,495.0,BLOCK_CARD,Customer dispute confirmed unauthorized transaction.
+HHG-007,fraud,card_not_present_fraud,BLOCK_CARD|CREATE_CASE,False,105.0,120.0,BLOCK_CARD,High risk score transaction confirmed unauthorized.
+HHG-008,fraud,out_of_region_use,BLOCK_CARD|CREATE_CASE,False,50.0,65.0,BLOCK_CARD,Customer dispute confirmed out-of-region unauthorized use.
+HHG-009,fraud,out_of_region_use,BLOCK_CARD|CREATE_CASE,False,25.0,35.0,BLOCK_CARD,Customer dispute confirmed unauthorized out-of-region use.
+HHG-010,fraud,card_not_present_fraud,BLOCK_CARD|CREATE_CASE|FILE_REPORT,True,990.0,1050.0,BLOCK_CARD|FILE_REPORT,"Exposure >= $1,000 mandates SAR filing under Policy R4."
+HHG-011,fraud,card_testing,BLOCK_CARD|CREATE_CASE|FILE_REPORT|MONITOR_CONNECTED_CARDS,True,180.0,230.0,BLOCK_CARD|FILE_REPORT,Card testing attack across connected cards mandates SAR under Policy R4.
+HHG-012,fraud,out_of_region_use,BLOCK_CARD|CREATE_CASE,False,25.0,35.0,BLOCK_CARD,Out-of-region card use confirmed unauthorized.
+HHG-013,fraud,out_of_region_use,BLOCK_CARD|CREATE_CASE,False,30.0,40.0,BLOCK_CARD,Out-of-region card use confirmed unauthorized.
+HHG-014,fraud,account_takeover,BLOCK_CARD|CREATE_CASE|FILE_REPORT|MONITOR_CONNECTED_CARDS,True,65.0,85.0,BLOCK_CARD|FILE_REPORT,Account takeover ring across shared device profile mandates SAR under Policy R4.
+HHG-015,fraud,out_of_region_use,BLOCK_CARD|CREATE_CASE,False,580.0,620.0,BLOCK_CARD,High risk out-of-region transaction confirmed unauthorized.
+HHG-016,fraud,card_not_present_new_device,BLOCK_CARD|CREATE_CASE,False,50.0,70.0,BLOCK_CARD,Customer dispute confirmed new device CNP unauthorized transaction.
+HHG-017,legitimate,none,ALLOW_TRANSACTION|CLOSE_NO_FRAUD,False,0.0,0.0,CLOSE_NO_FRAUD,Cardholder confirmed transaction was legitimate travel.
+HHG-018,legitimate,none,ALLOW_TRANSACTION|CLOSE_NO_FRAUD,False,0.0,0.0,CLOSE_NO_FRAUD,Cardholder verified recognized family member transaction.
+HHG-019,fraud,card_not_present_fraud,BLOCK_CARD|CREATE_CASE,False,90.0,110.0,BLOCK_CARD,High risk score CNP purchase confirmed fraudulent.
+HHG-020,legitimate,none,ALLOW_TRANSACTION|CLOSE_NO_FRAUD,False,0.0,0.0,CLOSE_NO_FRAUD,Cardholder confirmed legitimate purchase from new phone.
