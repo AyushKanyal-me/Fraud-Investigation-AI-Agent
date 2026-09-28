@@ -27,30 +27,23 @@ jobs:
         pip install ".[dev]"
 
 
-    - name: Run Test Suite (Offline)
+    - name: Run Unit & Regression Test Suite
       env:
         DATA_REPOSITORY_BACKEND: "local"
         SIMULATION_MODE: "true"
         API_AUTH_KEY: "test-ci-api-key-32-chars-long-secure"
         CHECKPOINT_BACKEND: "sqlite"
       run: |
-        pytest tests/test_startup_smoke.py \
-               tests/test_policy.py \
-               tests/test_validator.py \
-               tests/test_persistence.py \
-               tests/test_api.py \
-               tests/test_repository_local.py \
-               tests/test_baseline.py \
-               tests/test_episode_detection.py \
-               tests/test_repository_parity.py \
-               tests/test_customer_simulator.py \
-               tests/test_evidence_workflow.py \
-               tests/test_claim_validator.py \
-               tests/test_llm_resilience.py \
-               tests/test_audit_chain.py \
-               tests/test_tigergraph_fallback.py \
-               tests/test_checkpoints_db.py \
-               tests/test_token_tracker.py \
-               tests/test_evidence_classifier.py \
-               tests/test_tigergraph_parity_live.py
+        pytest -v
+
+    - name: Run 7-Dimension Quantitative Evaluation Suite
+      run: |
+        python -m eval.run_eval --fail-below 85.0
+
+    - name: Publish Evaluation Summary to GitHub Actions Summary
+      if: always()
+      run: |
+        if [ -f "eval/results/eval_summary.md" ]; then
+          cat eval/results/eval_summary.md >> $GITHUB_STEP_SUMMARY
+        fi
 
